@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CWA Cost Tracker Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cwa-blue': '#005EB8',
+                        'cwa-dark': '#232f3e'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-cwa-dark text-white py-4 px-5 text-center text-2xl font-bold">
+        CWA Cost Tracker Dashboard
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto my-5 p-5 bg-white rounded-lg shadow-lg">
+        <h2 class="text-2xl font-bold text-cwa-blue mb-4">Latest Cost Alerts</h2>
+        
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-8 text-gray-600">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-cwa-blue mx-auto mb-4"></div>
+            <p>Loading cost alerts...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <h3 class="font-bold">⚠️ Error Loading Data</h3>
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Logs Container -->
+        <div id="logs" class="mt-4 max-h-96 overflow-y-auto border border-gray-300 rounded-lg p-4 bg-gray-50">
+            Loading logs...
+        </div>
+
+        <!-- Refresh Button -->
+        <button onclick="loadLogs()" 
+                class="mt-4 bg-cwa-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200 ease-in-out transform hover:scale-105">
+            🔄 Refresh Logs
+        </button>
+
+        <!-- Stats Cards -->
+        <div id="stats" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div class="text-2xl font-bold text-cwa-blue" id="total-alerts">0</div>
+                <div class="text-sm text-gray-600">Total Alerts</div>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                <div class="text-2xl font-bold text-green-600" id="recent-alerts">0</div>
+                <div class="text-sm text-gray-600">Recent Alerts</div>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                <div class="text-2xl font-bold text-yellow-600" id="last-alert">-</div>
+                <div class="text-sm text-gray-600">Last Alert</div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+                const API_BASE_URL = 'https://vf8wpnzzgf.execute-api.us-east-1.amazonaws.com/dev';
+
+        async function loadLogs() {
+            try {
+                showLoading(true);
+                hideError();
+
+                        const response = await fetch(API_BASE_URL);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        const data = await response.json();
+                        displayLogs(data);
+
+            } catch (error) {
+                console.error('Error loading logs:', error);
+                showError('Failed to load cost alerts. Please check your API configuration and try again.');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function generateMockData() {
+            // Generate mock data for demonstration
+            const mockLogs = [];
+            const now = new Date();
+            
+            for (let i = 0; i < 8; i++) {
+                const date = new Date(now.getTime() - (i * 2 * 60 * 60 * 1000)); // Every 2 hours
+                const messages = [
+                    "Cost threshold exceeded: $15.50",
+                    "EC2 instance running idle for 24+ hours",
+                    "S3 storage costs increased by 25%",
+                    "RDS instance underutilized",
+                    "Lambda function timeout errors detected",
+                    "CloudFront cache hit ratio below 80%",
+                    "DynamoDB read capacity exceeded",
+                    "SNS topic delivery failures"
+                ];
+                
+                mockLogs.push({
+                    id: date.toISOString(),
+                    message: messages[i % messages.length]
+                });
+            }
+            
+            return mockLogs;
+        }
+
+        function displayLogs(logs) {
+            const logsContainer = document.getElementById('logs');
+            const statsContainer = document.getElementById('stats');
+
+            if (logs.length === 0) {
+                logsContainer.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <div class="text-4xl mb-2">📊</div>
+                        <p>No cost alerts found.</p>
+                        <p class="text-sm">All systems are running within normal cost parameters.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Display logs
+            logsContainer.innerHTML = logs.map(item => `
+                <div class="log-entry bg-white p-4 mb-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="font-semibold text-gray-800 mb-1">${item.message}</div>
+                            <div class="text-sm text-gray-500">
+                                <strong>Time:</strong> ${new Date(item.id).toLocaleString()}
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                Alert
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Update stats
+            updateStats(logs);
+            statsContainer.classList.remove('hidden');
+        }
+
+        function updateStats(logs) {
+            document.getElementById('total-alerts').textContent = logs.length;
+            
+            // Count recent alerts (last 24 hours)
+            const now = new Date();
+            const recentAlerts = logs.filter(log => {
+                const logTime = new Date(log.id);
+                return (now - logTime) < 24 * 60 * 60 * 1000; // 24 hours
+            });
+            document.getElementById('recent-alerts').textContent = recentAlerts.length;
+            
+            // Last alert time
+            if (logs.length > 0) {
+                const lastAlert = new Date(logs[0].id);
+                document.getElementById('last-alert').textContent = lastAlert.toLocaleTimeString();
+            }
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const logs = document.getElementById('logs');
+            
+            if (show) {
+                loading.classList.remove('hidden');
+                logs.classList.add('hidden');
+            } else {
+                loading.classList.add('hidden');
+                logs.classList.remove('hidden');
+            }
+        }
+
+        function showError(message) {
+            const error = document.getElementById('error');
+            const errorMessage = document.getElementById('error-message');
+            errorMessage.textContent = message;
+            error.classList.remove('hidden');
+        }
+
+        function hideError() {
+            const error = document.getElementById('error');
+            error.classList.add('hidden');
+        }
+
+        // Load logs on page load
+        document.addEventListener('DOMContentLoaded', loadLogs);
+    </script>
+</body>
+</html>
