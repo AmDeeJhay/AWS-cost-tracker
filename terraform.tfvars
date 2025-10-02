@@ -2,7 +2,7 @@
 
 aws_region         = "us-east-1"
 project_name       = "cost-tracker"
-cost_threshold     = 10.00
+cost_threshold     = 0.03
 notification_email = "samueldivine2021@gmail.com"
 schedule_expression = "rate(6 hours)"
 environment        = "dev"

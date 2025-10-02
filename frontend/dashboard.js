@@ -146,14 +146,14 @@ const KPICard = ({ title, value, change, trend, icon, className = "" }) => (
     <Card className={`animate-fade-in ${className}`}>
         <CardContent>
             <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-                    <p className={`text-sm ${trend === 'up' ? 'text-red-600 dark:text-red-400' : trend === 'down' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 truncate">{title}</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{value}</p>
+                    <p className={`text-xs sm:text-sm ${trend === 'up' ? 'text-red-600 dark:text-red-400' : trend === 'down' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'} truncate`}>
                         {change}
                     </p>
                 </div>
-                <div className="text-3xl">{icon}</div>
+                <div className="text-2xl sm:text-3xl ml-2 flex-shrink-0">{icon}</div>
             </div>
         </CardContent>
     </Card>
@@ -168,6 +168,155 @@ const ThemeToggle = ({ theme, toggleTheme }) => (
         {theme === 'light' ? '🌙' : '☀️'}
     </button>
 );
+
+const LogDetailModal = ({ log, isOpen, onClose }) => {
+    if (!isOpen || !log) return null;
+
+    const getLogTypeDetails = (log) => {
+        const details = {
+            cost_alert: {
+                icon: '💰',
+                title: 'Cost Alert',
+                description: 'Automated cost monitoring alert triggered by AWS billing thresholds or scheduled checks.',
+                actions: ['Logged to DynamoDB', 'Email notification sent', 'Dashboard updated']
+            },
+            threshold_update: {
+                icon: '⚙️',
+                title: 'Threshold Update',
+                description: 'CloudWatch billing alarm threshold was updated through the dashboard settings.',
+                actions: ['CloudWatch alarm updated', 'New threshold applied', 'Settings saved']
+            },
+            error: {
+                icon: '❌',
+                title: 'System Error',
+                description: 'An error occurred during cost monitoring or system operation.',
+                actions: ['Error logged', 'System continued monitoring', 'Admin notification sent']
+            },
+            manual_check: {
+                icon: '🔍',
+                title: 'Manual Check',
+                description: 'Cost monitoring check manually triggered by user or system administrator.',
+                actions: ['Cost data fetched', 'Current spend calculated', 'Dashboard refreshed']
+            }
+        };
+        return details[log.type] || details.cost_alert;
+    };
+
+    const logDetails = getLogTypeDetails(log);
+    
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center space-x-3">
+                            <span className="text-3xl">{logDetails.icon}</span>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                                    {logDetails.title}
+                                </h2>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    {formatDate(log.timestamp)}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl"
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div className="space-y-6">
+                        {/* Message */}
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Message</h3>
+                            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                <p className="text-gray-900 dark:text-gray-100">{log.message}</p>
+                            </div>
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h3>
+                            <p className="text-gray-600 dark:text-gray-400">{logDetails.description}</p>
+                        </div>
+
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Region</h3>
+                                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                                    <p className="text-blue-900 dark:text-blue-100 font-medium">{log.region}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Severity</h3>
+                                <div className={`rounded-lg p-3 ${
+                                    log.severity === 'high' ? 'bg-red-50 dark:bg-red-900/20' :
+                                    log.severity === 'medium' ? 'bg-yellow-50 dark:bg-yellow-900/20' :
+                                    'bg-green-50 dark:bg-green-900/20'
+                                }`}>
+                                    <p className={`font-medium capitalize ${
+                                        log.severity === 'high' ? 'text-red-900 dark:text-red-100' :
+                                        log.severity === 'medium' ? 'text-yellow-900 dark:text-yellow-100' :
+                                        'text-green-900 dark:text-green-100'
+                                    }`}>
+                                        {log.severity}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* System Actions */}
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">System Actions Performed</h3>
+                            <div className="space-y-2">
+                                {logDetails.actions.map((action, index) => (
+                                    <div key={index} className="flex items-center space-x-3">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+                                        <p className="text-gray-600 dark:text-gray-400">{action}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Technical Details */}
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Technical Details</h3>
+                            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 font-mono text-sm">
+                                <div className="space-y-1">
+                                    <p><span className="text-gray-500">ID:</span> <span className="text-gray-900 dark:text-gray-100">{log.id}</span></p>
+                                    <p><span className="text-gray-500">Type:</span> <span className="text-gray-900 dark:text-gray-100">{log.type || 'cost_alert'}</span></p>
+                                    <p><span className="text-gray-500">Timestamp:</span> <span className="text-gray-900 dark:text-gray-100">{log.timestamp}</span></p>
+                                    {log.current_cost && (
+                                        <p><span className="text-gray-500">Cost:</span> <span className="text-gray-900 dark:text-gray-100">${log.current_cost}</span></p>
+                                    )}
+                                    {log.highest_cost_service && (
+                                        <p><span className="text-gray-500">Top Service:</span> <span className="text-gray-900 dark:text-gray-100">{log.highest_cost_service}</span></p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <button
+                            onClick={onClose}
+                            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const MonitoringTimer = () => {
     const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
@@ -403,6 +552,8 @@ const Dashboard = () => {
     const [costLogs, setCostLogs] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [selectedLog, setSelectedLog] = useState(null);
+    const [showLogModal, setShowLogModal] = useState(false);
 
     const regions = [
         { value: 'us-east-1', label: '🇺🇸 US East (N. Virginia)' },
@@ -516,11 +667,11 @@ const Dashboard = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-            <div className="max-w-7xl mx-auto p-4">
+            <div className="max-w-7xl mx-auto p-2 sm:p-4 lg:p-6">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4">
                     <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
                         🏦 DeeJhay's Cost Tracker Dashboard
                     </h1>
                         {lastUpdated && (
@@ -529,11 +680,11 @@ const Dashboard = () => {
                             </p>
                         )}
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
                         <select 
                             value={selectedRegion}
                             onChange={(e) => setSelectedRegion(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
                         >
                             {regions.map(region => (
                                 <option key={region.value} value={region.value}>
@@ -543,14 +694,14 @@ const Dashboard = () => {
                         </select>
                         <button
                             onClick={() => setShowSettings(!showSettings)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm sm:text-base"
                         >
                             ⚙️ Settings
                         </button>
                         <button
                             onClick={loadDashboardData}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+                            className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors text-sm sm:text-base"
                         >
                             {isLoading ? '🔄 Loading...' : '🔄 Refresh'}
                         </button>
@@ -570,7 +721,7 @@ const Dashboard = () => {
                 )}
 
                 {/* KPI Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
                     <KPICard
                         title={kpiData.isRealData ? "Current Month Spend" : "Estimated Current Spend"}
                         value={formatCurrency(kpiData.currentSpend)}
@@ -658,7 +809,14 @@ const Dashboard = () => {
                                 ) : (
                                     <div className="space-y-3 max-h-96 overflow-y-auto">
                                         {costLogs.map((log, index) => (
-                                            <div key={log.id || index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                            <div 
+                                                key={log.id || index} 
+                                                className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+                                                onClick={() => {
+                                                    setSelectedLog(log);
+                                                    setShowLogModal(true);
+                                                }}
+                                            >
                                                 <div className="flex items-start justify-between">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2 mb-2">
@@ -675,6 +833,9 @@ const Dashboard = () => {
                                                         <div className="text-sm text-gray-500 dark:text-gray-400">
                                                             🕒 {formatDate(log.timestamp || log.id)}
                                                         </div>
+                                                    </div>
+                                                    <div className="ml-4 text-gray-400 dark:text-gray-500">
+                                                        <span className="text-xs">Click for details →</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -702,6 +863,16 @@ const Dashboard = () => {
                     <p>Data updates automatically based on your AWS cost alerts</p>
                 </div>
             </div>
+
+            {/* Log Detail Modal */}
+            <LogDetailModal 
+                log={selectedLog}
+                isOpen={showLogModal}
+                onClose={() => {
+                    setShowLogModal(false);
+                    setSelectedLog(null);
+                }}
+            />
         </div>
     );
 };

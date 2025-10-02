@@ -4,7 +4,6 @@
 
 ### 🎨 Frontend with Tailwind CSS
 - **Modern Design**: Replaced custom CSS with Tailwind CSS for better maintainability
-- **CWA Branding**: Updated to match CWA (Cloud Web Application) theme with custom colors
 - **Responsive Layout**: Mobile-first design with responsive grid system
 - **Interactive Elements**: Hover effects, loading states, and smooth transitions
 - **Alert-focused UI**: Designed specifically for displaying cost alerts and notifications
