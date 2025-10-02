@@ -45,7 +45,8 @@ resource "aws_lambda_function" "api_handler" {
 
   environment {
     variables = {
-      DDB_TABLE = aws_dynamodb_table.cost_logs.name
+      DDB_TABLE      = aws_dynamodb_table.cost_logs.name
+      SNS_TOPIC_ARN  = aws_sns_topic.cost_alerts.arn
     }
   }
 

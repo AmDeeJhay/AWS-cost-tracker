@@ -53,9 +53,35 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "ce:GetDimensionValues",
           "ce:GetUsageAndCosts",
-          "ce:GetCostAndUsage"
+          "ce:GetCostAndUsage",
+          "ce:GetCostForecast"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:GetMetricStatistics"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:StopInstances",
+          "ec2:DescribeInstanceStatus"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sns:Publish"
+        ]
+        Resource = aws_sns_topic.cost_alerts.arn
       }
     ]
   })

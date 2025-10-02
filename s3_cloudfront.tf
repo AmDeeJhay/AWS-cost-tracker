@@ -134,3 +134,12 @@ resource "aws_s3_object" "dashboard_html" {
   content_type = "text/html"
   etag         = filemd5("${path.module}/frontend/index.html")
 }
+
+# Upload JavaScript file to S3
+resource "aws_s3_object" "dashboard_js" {
+  bucket       = aws_s3_bucket.dashboard_bucket.id
+  key          = "dashboard.js"
+  source       = "${path.module}/frontend/dashboard.js"
+  content_type = "application/javascript"
+  etag         = filemd5("${path.module}/frontend/dashboard.js")
+}

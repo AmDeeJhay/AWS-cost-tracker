@@ -78,7 +78,7 @@ output "deployment_instructions" {
     Deployment completed! Here's what you need to do next:
     
     1. Update the frontend/index.html file:
-       - Replace 'YOUR_API_GATEWAY_URL' with: ${aws_api_gateway_deployment.cost_tracker_deployment.invoke_url}
+       - Replace 'https://vf8wpnzzgf.execute-api.us-east-1.amazonaws.com/dev' with: ${aws_api_gateway_deployment.cost_tracker_deployment.invoke_url}
     
     2. Re-upload the frontend to S3:
        - Run: terraform apply (to update the S3 object)
