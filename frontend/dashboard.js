@@ -4,6 +4,7 @@ const { useState, useEffect, useCallback } = React;
 
 // API Configuration
 const API_BASE_URL = 'https://vf8wpnzzgf.execute-api.us-east-1.amazonaws.com/dev';
+const projectName = 'DeeJhay\'s Cost Tracker';
 
 // Theme Hook
 const useTheme = () => {
@@ -519,9 +520,9 @@ const Dashboard = () => {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                            🏦 AWS Cost Tracker Dashboard
-                        </h1>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                        🏦 DeeJhay's Cost Tracker Dashboard
+                    </h1>
                         {lastUpdated && (
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                 Last updated: {formatDate(lastUpdated)}
@@ -696,8 +697,8 @@ const Dashboard = () => {
 
                 {/* Footer */}
                 <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    <p>AWS Cost Tracker Dashboard - Real-time cost monitoring</p>
-                    <p>Region: {selectedRegion} | API: {API_BASE_URL}</p>
+                    <p>DeeJhay's Tracker Dashboard - Real-time cost monitoring</p>
+                    <p>Region: {selectedRegion} | Project: {projectName}</p>
                     <p>Data updates automatically based on your AWS cost alerts</p>
                 </div>
             </div>
