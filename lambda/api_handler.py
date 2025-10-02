@@ -150,17 +150,54 @@ def get_dashboard_data(headers, query_params):
             "body": json.dumps({"error": "Failed to get dashboard data", "details": str(e)})
         }
 
+def smart_round(amount):
+    """Smart rounding - show more precision for very small amounts"""
+    if amount == 0:
+        return 0.00
+    elif amount < 0.01:
+        # For amounts less than 1 cent, show up to 6 decimal places
+        return round(amount, 6)
+    else:
+        # For normal amounts, show 2 decimal places
+        return round(amount, 2)
+
 def get_real_cost_data():
-    """Get real cost data from AWS Cost Explorer"""
+    """Get real cost data from AWS Cost Explorer and CloudWatch Billing"""
     try:
-        # Get current month date range
+        # Try CloudWatch billing metrics first (more immediate)
+        cloudwatch_cost = get_cloudwatch_billing_data()
+        if cloudwatch_cost and cloudwatch_cost > 0:
+            print(f"Using CloudWatch billing data: ${cloudwatch_cost}")
+            return {
+                "currentSpend": smart_round(cloudwatch_cost),
+                "forecastedBill": smart_round(cloudwatch_cost * 1.2),  # 20% increase estimate
+                "highestCostService": {
+                    "name": "AWS Services (CloudWatch)",
+                    "cost": smart_round(cloudwatch_cost)
+                },
+                "serviceBreakdown": [
+                    {
+                        "name": "AWS Services",
+                        "cost": smart_round(cloudwatch_cost)
+                    }
+                ],
+                "lastUpdated": datetime.utcnow().isoformat(),
+                "dataSource": "CloudWatch Billing"
+            }
+        
+        # Fallback to Cost Explorer
+        print("CloudWatch billing data not available, trying Cost Explorer...")
+        
+        # Get current month date range - Cost Explorer needs the full month range
         now = datetime.now()
         start_date = now.replace(day=1).strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
+        
+        # For end date, use tomorrow to ensure we get all data up to today
+        end_date = (now + timedelta(days=1)).strftime('%Y-%m-%d')
         
         print(f"Fetching cost data from {start_date} to {end_date}")
         
-        # Get current month costs by service
+        # First try: Get current month costs by service
         response = ce.get_cost_and_usage(
             TimePeriod={
                 'Start': start_date,
@@ -176,6 +213,21 @@ def get_real_cost_data():
             ]
         )
         
+        print(f"Cost Explorer response: {response}")
+        
+        # If no data, try without grouping by service
+        if not response.get('ResultsByTime') or not response['ResultsByTime'][0].get('Groups'):
+            print("No grouped data found, trying without service grouping...")
+            response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': start_date,
+                    'End': end_date
+                },
+                Granularity='MONTHLY',
+                Metrics=['BlendedCost']
+            )
+            print(f"Ungrouped Cost Explorer response: {response}")
+        
         # Process the response
         if not response.get('ResultsByTime'):
             print("No cost data available for current month")
@@ -189,20 +241,37 @@ def get_real_cost_data():
         services = []
         highest_service = {"name": "No Data", "cost": 0}
         
-        for group in groups:
-            service_name = group['Keys'][0]
-            cost_amount = float(group['Metrics']['BlendedCost']['Amount'])
-            
-            if cost_amount > 0:
-                services.append({
-                    "name": service_name,
-                    "cost": cost_amount
-                })
-                total_spend += cost_amount
+        if groups:
+            # Process grouped data (by service)
+            print(f"Processing {len(groups)} service groups")
+            for group in groups:
+                service_name = group['Keys'][0]
+                cost_amount = float(group['Metrics']['BlendedCost']['Amount'])
                 
-                # Track highest cost service
-                if cost_amount > highest_service["cost"]:
-                    highest_service = {"name": service_name, "cost": cost_amount}
+                print(f"Service: {service_name}, Cost: ${cost_amount}")
+                
+                if cost_amount > 0:
+                    services.append({
+                        "name": service_name,
+                        "cost": cost_amount
+                    })
+                    total_spend += cost_amount
+                    
+                    # Track highest cost service
+                    if cost_amount > highest_service["cost"]:
+                        highest_service = {"name": service_name, "cost": cost_amount}
+        else:
+            # Process ungrouped data (total only)
+            print("Processing ungrouped total cost data")
+            total_cost = current_month_data.get('Total', {}).get('BlendedCost', {})
+            if total_cost:
+                total_spend = float(total_cost.get('Amount', 0))
+                print(f"Total ungrouped cost: ${total_spend}")
+                
+                if total_spend > 0:
+                    # Since we don't have service breakdown, use a generic service
+                    highest_service = {"name": "AWS Services", "cost": total_spend}
+                    services = [{"name": "AWS Services", "cost": total_spend}]
         
         # Get forecast data for next month
         forecast_response = ce.get_cost_forecast(
@@ -222,27 +291,73 @@ def get_real_cost_data():
                 pass
         
         real_data = {
-            "currentSpend": round(total_spend, 2),
-            "forecastedBill": round(forecasted_bill, 2),
+            "currentSpend": smart_round(total_spend),
+            "forecastedBill": smart_round(forecasted_bill),
             "highestCostService": {
                 "name": highest_service["name"],
-                "cost": round(highest_service["cost"], 2)
+                "cost": smart_round(highest_service["cost"])
             },
             "serviceBreakdown": [
                 {
                     "name": service["name"],
-                    "cost": round(service["cost"], 2)
+                    "cost": smart_round(service["cost"])
                 } for service in sorted(services, key=lambda x: x["cost"], reverse=True)[:10]  # Top 10 services
             ],
             "lastUpdated": datetime.utcnow().isoformat()
         }
         
-        print(f"Real cost data retrieved: ${total_spend:.2f} total, {len(services)} services")
-        return real_data
+        print(f"Real cost data retrieved: ${total_spend:.6f} total (rounded: ${smart_round(total_spend)}), {len(services)} services")
+        
+        # Ensure we have valid data before returning
+        if total_spend > 0:
+            return real_data
+        else:
+            print("No valid cost data found, returning None")
+            return None
         
     except Exception as e:
         print(f"Error fetching real cost data: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         # Return None so dashboard falls back to estimates
+        return None
+
+def get_cloudwatch_billing_data():
+    """Get billing data from CloudWatch metrics"""
+    try:
+        # Get the latest billing metric from CloudWatch
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(days=1)  # Look back 1 day
+        
+        response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/Billing',
+            MetricName='EstimatedCharges',
+            Dimensions=[
+                {
+                    'Name': 'Currency',
+                    'Value': 'USD'
+                }
+            ],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=86400,  # 1 day
+            Statistics=['Maximum']
+        )
+        
+        print(f"CloudWatch billing response: {response}")
+        
+        if response.get('Datapoints'):
+            # Get the most recent datapoint
+            latest_datapoint = max(response['Datapoints'], key=lambda x: x['Timestamp'])
+            billing_amount = latest_datapoint['Maximum']
+            print(f"Latest CloudWatch billing amount: ${billing_amount}")
+            return billing_amount
+        else:
+            print("No CloudWatch billing datapoints found")
+            return None
+            
+    except Exception as e:
+        print(f"Error getting CloudWatch billing data: {str(e)}")
         return None
 
 def update_threshold(event, headers):
@@ -278,10 +393,12 @@ def update_threshold(event, headers):
             ]
         )
         
-        # Log the threshold update
+        # Log the threshold update with description
+        threshold_description = f"The billing alarm threshold was updated to ${threshold}. Future cost alerts will trigger when spending exceeds this amount. This change affects monitoring for region {region}."
         table.put_item(Item={
             "id": datetime.utcnow().isoformat(),
             "message": f"Threshold updated to ${threshold}",
+            "description": threshold_description,
             "region": region,
             "severity": "info",
             "type": "threshold_update"

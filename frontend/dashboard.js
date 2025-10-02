@@ -31,12 +31,31 @@ const useTheme = () => {
 
 // Utility Functions
 const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(amount);
+    // Handle very small amounts with more precision
+    if (amount === 0) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    } else if (amount < 0.01) {
+        // For amounts less than 1 cent, show up to 6 decimal places
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 6
+        }).format(amount);
+    } else {
+        // For normal amounts, show 2 decimal places
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
 };
 
 const formatDate = (dateString) => {
@@ -173,36 +192,43 @@ const LogDetailModal = ({ log, isOpen, onClose }) => {
     if (!isOpen || !log) return null;
 
     const getLogTypeDetails = (log) => {
-        const details = {
+        const logType = log.type || 'cost_alert';
+        
+        const typeConfig = {
             cost_alert: {
-                icon: '💰',
+                icon: '🚨',
                 title: 'Cost Alert',
-                description: 'Automated cost monitoring alert triggered by AWS billing thresholds or scheduled checks.',
-                actions: ['Logged to DynamoDB', 'Email notification sent', 'Dashboard updated']
+                actions: ['Threshold breach detected', 'Email notification sent', 'Dashboard updated', 'Alert logged to DynamoDB']
+            },
+            scheduled_check: {
+                icon: '⏰',
+                title: 'Scheduled Check',
+                actions: ['Cost data fetched', 'Service usage analyzed', 'Dashboard updated', 'Logged to DynamoDB']
             },
             threshold_update: {
                 icon: '⚙️',
                 title: 'Threshold Update',
-                description: 'CloudWatch billing alarm threshold was updated through the dashboard settings.',
-                actions: ['CloudWatch alarm updated', 'New threshold applied', 'Settings saved']
+                actions: ['CloudWatch alarm updated', 'New threshold applied', 'Settings saved', 'Dashboard refreshed']
             },
             error: {
                 icon: '❌',
                 title: 'System Error',
-                description: 'An error occurred during cost monitoring or system operation.',
-                actions: ['Error logged', 'System continued monitoring', 'Admin notification sent']
+                actions: ['Error logged', 'System continued monitoring', 'Admin notification sent', 'Fallback procedures activated']
             },
             manual_check: {
                 icon: '🔍',
                 title: 'Manual Check',
-                description: 'Cost monitoring check manually triggered by user or system administrator.',
-                actions: ['Cost data fetched', 'Current spend calculated', 'Dashboard refreshed']
+                actions: ['Cost data fetched', 'Current spend calculated', 'Dashboard refreshed', 'System status verified']
             }
         };
-        return details[log.type] || details.cost_alert;
+        
+        return typeConfig[logType] || typeConfig.cost_alert;
     };
 
     const logDetails = getLogTypeDetails(log);
+    
+    // Use the description from the API if available, otherwise fall back to a generic message
+    const description = log.description || `Cost monitoring event for ${log.region}. The system processed this event and updated the dashboard accordingly.`;
     
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -242,7 +268,7 @@ const LogDetailModal = ({ log, isOpen, onClose }) => {
                         {/* Description */}
                         <div>
                             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h3>
-                            <p className="text-gray-600 dark:text-gray-400">{logDetails.description}</p>
+                            <p className="text-gray-600 dark:text-gray-400">{description}</p>
                         </div>
 
                         {/* Details Grid */}
