@@ -1,249 +1,122 @@
-# Cloud Cost Tracker & Alert System
+🔗 Resource Connection Map
+1. User Interface Layer
+Web Browser ↔ CloudFront
+  *Connection Type: HTTPS (TLS 1.2+)
+  *Purpose: Global content delivery and caching
+  *Data Flow:
+    Static assets (HTML, CSS, JS) served from CloudFront edge locations
+    API calls routed through CloudFront to API Gateway
+  *Port: 443 (HTTPS)
 
-A comprehensive AWS cost monitoring and alerting system built entirely with Terraform Infrastructure as Code (IaC). This system monitors AWS billing metrics, stores cost data in DynamoDB, sends alerts when thresholds are exceeded, and provides a beautiful web dashboard for visualizing cost trends.
+CloudFront ↔ S3 Bucket
+  *Connection Type: AWS Internal (HTTPS)
+  *Purpose: Origin for static website hosting
+  *Data Flow: CloudFront fetches React app files from S3
+  *Configuration: Origin Access Identity (OAI) for secure access
 
-## 🏗️ Architecture Overview
+CloudFront ↔ API Gateway
+  *Connection Type: AWS Internal (HTTPS)
+  *Purpose: API request routing
+  *Data Flow: User API calls → CloudFront → API Gateway
+  *Caching: API responses cached at edge locations
 
-This system provides end-to-end cost monitoring with the following components:
+2. API Layer
+  *API Gateway ↔ Lambda Functions
+  *Connection Type: AWS Lambda Invoke
+  *Purpose: Serverless compute execution
+  *Data Flow:
+      -REST API calls trigger Lambda functions
+      -Lambda returns JSON responses
+  *Permissions: IAM role allows API Gateway to invoke Lambda
 
-- **📊 DynamoDB Table**: Stores cost and usage logs with timestamp-based queries
-- **🚨 CloudWatch Alarms**: Monitor estimated billing metrics and trigger alerts
-- **📧 SNS Topic**: Send email/SMS notifications when thresholds are exceeded
-- **⚡ Lambda Functions**: Scheduled cost logging and REST API endpoints
-- **⏰ EventBridge Rule**: Triggers Lambda functions on configurable schedules
-- **🌐 API Gateway**: Exposes cost data as RESTful API with CORS support
-- **🌍 S3 + CloudFront**: Hosts static web dashboard with global CDN
+API Gateway Endpoints:
+  GET  /dashboard-data  → API Handler Lambda
+  POST /update-threshold → API Handler Lambda  
+  POST /stop-ec2        → API Handler Lambda
 
-## 📁 Project Structure
 
-```
-cloud-cost-tracker/
-├── terraform/
-│   ├── main.tf                 # Main Terraform configuration (minimal)
-│   ├── provider.tf             # AWS provider and data sources
-│   ├── variables.tf            # Input variables
-│   ├── outputs.tf              # Output values
-│   ├── dynamodb.tf             # DynamoDB table configuration
-│   ├── cloudwatch.tf           # CloudWatch alarms
-│   ├── sns.tf                  # SNS topic and subscriptions
-│   ├── iam.tf                  # IAM roles and policies
-│   ├── lambda.tf               # Lambda functions
-│   ├── eventbridge.tf          # EventBridge scheduling rules
-│   ├── api_gateway.tf          # API Gateway configuration
-│   ├── s3_cloudfront.tf        # S3 bucket and CloudFront distribution
-│   └── terraform.tfvars.example # Example variables file
-├── lambda/
-│   ├── cost_logger.py          # Scheduled cost logging function
-│   ├── api_handler.py          # API Gateway handler function
-│   └── requirements.txt        # Python dependencies
-├── frontend/
-│   └── index.html              # Interactive web dashboard
-├── architecture.md             # Detailed architecture documentation
-└── README.md                   # This file
-```
+3. Compute Layer
+API Handler Lambda ↔ DynamoDB
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Cost log storage and retrieval
+  *Data Flow:
+      -Read: Fetch cost logs for dashboard display
+      -Write: Store threshold updates and emergency actions
+  *Permissions: DynamoDB read/write access via IAM role
 
-## 🚀 Quick Start
+API Handler Lambda ↔ CloudWatch
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Real-time cost data and alarm management
+  *Data Flow:
+    -Read: Fetch billing metrics and cost data
+    -Write: Update billing alarm thresholds
+  *Permissions: CloudWatch read/write access via IAM role
 
-### Prerequisites
+API Handler Lambda ↔ EC2
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Emergency instance control
+  *Data Flow:
+    -Read: Describe running instances
+    -Write: Stop and terminate instances
+  *Permissions: EC2 describe, stop, terminate access via IAM role
 
-- AWS CLI configured with appropriate permissions
-- Terraform >= 1.0 installed
-- Python 3.9+ (for Lambda functions)
+Cost Logger Lambda ↔ DynamoDB
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Automated cost logging
+  *Data Flow:
+    -Write: Store cost log entries every 6 hours
+    -Read: Query recent logs for context
+  *Permissions: DynamoDB write access via IAM role
 
-### 🔒 Security-First Setup
+Cost Logger Lambda ↔ CloudWatch
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Fetch current cost data
+  *Data Flow:
+    -Read: Get billing metrics and cost explorer data
+  *Permissions: CloudWatch read access via IAM role
 
-This project uses **minimal IAM permissions** following the principle of least privilege for better security.
+4. Data Storage Layer
+DynamoDB Table Structure
+  *Table Name: cost-tracker-cost-logs
+  *Primary Key: id (timestamp)
+  *Attributes: message, description, region, severity, type, timestamp
+  *Access Pattern: Query by timestamp range
 
-**Choose your setup approach:**
+S3 Bucket Structure
+ *Bucket Name: cost-tracker-dashboard-8exmz3u1
+  *Contents: React app files (HTML, CSS, JS)
+  *Access: Public read for web content
+  *Versioning: Enabled for rollback capability
 
-1. **🔒 Secure Setup (Recommended)**: Uses minimal, scoped permissions
-   - See `SECURE_SETUP_GUIDE.md` for detailed instructions
-   - Uses custom IAM policy with only required permissions
-   - Production-ready and secure
+5. Monitoring & Alerting Layer
+EventBridge ↔ Cost Logger Lambda
+  *Connection Type: AWS EventBridge Invoke
+  *Purpose: Scheduled cost monitoring
+  *Schedule: Every 6 hours (configurable)
+  *Data Flow: EventBridge triggers Lambda execution
+  *Permissions: EventBridge invoke permission
 
-2. **⚡ Quick Setup**: Uses full access policies (for learning/testing)
-   - See `SETUP_GUIDE.md` for basic instructions
-   - Uses AWS managed policies with full access
-   - Faster setup but less secure
+CloudWatch ↔ SNS
+  *Connection Type: AWS CloudWatch Alarms
+  *Purpose: Threshold breach notifications
+  *Data Flow: Alarm state change → SNS notification
+  *Configuration: CloudWatch alarm actions
 
-### Deployment Steps
+SNS ↔ Email
+  *Connection Type: SMTP (TLS)
+  *Purpose: Email alert delivery
+  *Data Flow: SNS → Email service → User inbox
+  *Port: 587 (SMTP with TLS)
 
-1. **Clone and navigate to the project:**
-   ```bash
-   git clone <repository-url>
-   cd cloud-cost-tracker
-   ```
+6. External AWS Services
+Cost Explorer API
+  *Connection Type: AWS SDK (HTTPS)
+  *Purpose: Historical cost data and forecasting
+  *Data Flow: Lambda functions query Cost Explorer API
+  *Permissions: Cost Explorer read access
 
-2. **Choose your setup approach:**
-   - **Secure**: Follow `SECURE_SETUP_GUIDE.md`
-   - **Quick**: Follow `SETUP_GUIDE.md`
-
-3. **Configure your variables:**
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars with your values
-   ```
-
-4. **Initialize and deploy:**
-   ```bash
-   terraform init
-   terraform plan
-   terraform apply
-   ```
-
-5. **Update the frontend with your API URL:**
-   - After deployment, Terraform will output the API Gateway URL
-   - Update `frontend/index.html` and replace `YOUR_API_GATEWAY_URL` with the actual URL
-   - Re-run `terraform apply` to update the S3 object
-
-## ⚙️ Configuration
-
-### Required Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `notification_email` | Email for cost alerts | `admin@company.com` |
-
-### Optional Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `aws_region` | AWS region for resources | `us-east-1` |
-| `project_name` | Name prefix for resources | `cost-tracker` |
-| `cost_threshold` | Cost threshold in USD | `10.00` |
-| `schedule_expression` | EventBridge schedule | `rate(6 hours)` |
-| `environment` | Environment name | `dev` |
-
-## 🧪 Testing
-
-Since billing metrics may not trigger naturally in test accounts:
-
-### Manual Testing
-1. **Test Lambda Functions:**
-   - Go to AWS Lambda Console
-   - Manually invoke the `cost-logger` function
-   - Check DynamoDB for new entries
-
-2. **Test Alerts:**
-   - Set `cost_threshold = 0.01` in `terraform.tfvars`
-   - Run `terraform apply`
-   - The alarm should trigger quickly
-
-3. **Test Dashboard:**
-   - Visit the CloudFront URL from Terraform outputs
-   - Verify data loads and charts render correctly
-
-### Automated Testing
-```bash
-# Test API endpoint
-curl https://your-api-gateway-url/cost-data
-
-# Check DynamoDB entries
-aws dynamodb scan --table-name cost-tracker-cost-logs
-```
-
-## 📊 Dashboard Features
-
-The web dashboard includes:
-
-- **📈 Interactive Charts**: Cost trends over time using Chart.js
-- **📋 Data Tables**: Detailed cost logs with timestamps
-- **📊 Statistics Cards**: Total costs, data points, last update
-- **🔄 Real-time Updates**: Refresh button for latest data
-- **📱 Responsive Design**: Works on desktop and mobile
-- **🎨 Modern UI**: Beautiful gradient design with smooth animations
-
-## 🔧 Customization
-
-### Adding New Metrics
-1. Modify `lambda/cost_logger.py` to fetch additional Cost Explorer metrics
-2. Update the DynamoDB schema in `dynamodb.tf`
-3. Enhance the frontend to display new data
-
-### Changing Alert Thresholds
-1. Update `cost_threshold` in `terraform.tfvars`
-2. Run `terraform apply`
-3. Test with a low threshold (e.g., $0.01)
-
-### Modifying Schedule
-1. Change `schedule_expression` in `terraform.tfvars`
-2. Examples: `rate(1 hour)`, `cron(0 9 * * ? *)` (daily at 9 AM)
-
-## 🛡️ Security Considerations
-
-- **IAM Roles**: Least privilege access for all resources
-- **S3 Bucket**: Public read access only for static content
-- **API Gateway**: No authentication (can be enhanced with API keys)
-- **Lambda**: Minimal required permissions
-- **CloudWatch**: Secure monitoring and alerting
-
-## 💰 Cost Optimization
-
-- **DynamoDB**: Pay-per-request billing mode
-- **Lambda**: Appropriate timeouts and memory allocation
-- **CloudFront**: Caching to reduce origin requests
-- **S3**: Standard storage class for static content
-- **EventBridge**: Free tier usage for scheduling
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Lambda function fails:**
-   - Check CloudWatch logs
-   - Verify IAM permissions
-   - Ensure Cost Explorer API is enabled
-
-2. **Dashboard not loading:**
-   - Verify S3 bucket policy allows public read
-   - Check CloudFront distribution status
-   - Update API URL in frontend code
-
-3. **Alerts not working:**
-   - Confirm SNS subscription is confirmed
-   - Check CloudWatch alarm state
-   - Verify cost threshold is appropriate
-
-### Debugging Commands
-
-```bash
-# Check Lambda logs
-aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cost-tracker
-
-# Test API Gateway
-aws apigateway get-rest-apis
-
-# Verify DynamoDB
-aws dynamodb describe-table --table-name cost-tracker-cost-logs
-```
-
-## 📈 Monitoring and Maintenance
-
-- **CloudWatch Logs**: Monitor Lambda function execution
-- **CloudWatch Metrics**: Track API Gateway and DynamoDB usage
-- **SNS Notifications**: Receive alerts for cost threshold breaches
-- **DynamoDB**: Monitor table size and performance
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues and questions:
-1. Check the troubleshooting section
-2. Review AWS CloudWatch logs
-3. Open an issue in the repository
-4. Check AWS documentation for service-specific issues
-
----
-
-**Note**: This system is designed for cost monitoring and alerting. For production use, consider adding authentication, enhanced security measures, and additional monitoring capabilities.
+AWS CLI (Fallback)
+  *Connection Type: AWS CLI commands
+  *Purpose: Alternative cost data source
+  *Data Flow: Lambda executes CLI commands via subprocess
+  *Use Case: When Cost Explorer API fails

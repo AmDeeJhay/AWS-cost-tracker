@@ -200,6 +200,8 @@ def get_current_costs():
         start_date = now.replace(day=1).strftime('%Y-%m-%d')
         end_date = now.strftime('%Y-%m-%d')
         
+        print(f"Fetching cost data from {start_date} to {end_date}")
+        
         # Query Cost Explorer for current month costs
         response = ce.get_cost_and_usage(
             TimePeriod={
@@ -216,10 +218,14 @@ def get_current_costs():
             ]
         )
         
+        print(f"Cost Explorer response: {response}")
+        
         # Process the response
-        if response.get('ResultsByTime'):
+        if response.get('ResultsByTime') and len(response['ResultsByTime']) > 0:
             result = response['ResultsByTime'][0]
             total_cost = float(result['Total']['BlendedCost']['Amount'])
+            
+            print(f"Total cost for current month: ${total_cost}")
             
             # Get top services
             services = []
@@ -231,6 +237,7 @@ def get_current_costs():
                         'name': service_name,
                         'cost': service_cost
                     })
+                    print(f"Service: {service_name}, Cost: ${service_cost}")
             
             # Sort by cost and get top 5
             services.sort(key=lambda x: x['cost'], reverse=True)
@@ -241,7 +248,12 @@ def get_current_costs():
                 'top_services': top_services,
                 'cost_date': end_date
             }
+        else:
+            print("No cost data available for current month")
+            return None
             
     except Exception as e:
         print(f"Error fetching cost data: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return None

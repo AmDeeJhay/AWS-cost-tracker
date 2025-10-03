@@ -1,6 +1,7 @@
 import boto3
 import json
 import os
+import subprocess
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -157,14 +158,153 @@ def smart_round(amount):
     elif amount < 0.01:
         # For amounts less than 1 cent, show up to 6 decimal places
         return round(amount, 6)
+    elif amount < 0.10:
+        # For amounts less than 10 cents, show 4 decimal places
+        return round(amount, 4)
     else:
         # For normal amounts, show 2 decimal places
         return round(amount, 2)
 
 def get_real_cost_data():
-    """Get real cost data from AWS Cost Explorer and CloudWatch Billing"""
+    """Get real cost data from AWS Cost Explorer and CloudWatch Billing with multiple strategies"""
     try:
-        # Try CloudWatch billing metrics first (more immediate)
+        # Get current month date range - Cost Explorer needs the full month range
+        now = datetime.now()
+        start_date = now.replace(day=1).strftime('%Y-%m-%d')
+        
+        # Try multiple end dates to get the most recent data
+        end_dates_to_try = [
+            now.strftime('%Y-%m-%d'),  # Today
+            (now + timedelta(days=1)).strftime('%Y-%m-%d'),  # Tomorrow (Cost Explorer often needs this)
+            (now + timedelta(days=2)).strftime('%Y-%m-%d')   # Day after tomorrow
+        ]
+        
+        print(f"Fetching cost data from {start_date} with multiple end dates: {end_dates_to_try}")
+        
+        # Strategy 1: Try Cost Explorer with different end dates
+        for end_date in end_dates_to_try:
+            try:
+                print(f"Trying Cost Explorer with end date: {end_date}")
+                
+                # First try: Get current month costs by service
+                response = ce.get_cost_and_usage(
+                    TimePeriod={
+                        'Start': start_date,
+                        'End': end_date
+                    },
+                    Granularity='MONTHLY',
+                    Metrics=['BlendedCost'],
+                    GroupBy=[
+                        {
+                            'Type': 'DIMENSION',
+                            'Key': 'SERVICE'
+                        }
+                    ]
+                )
+                
+                print(f"Cost Explorer response for {end_date}: {response}")
+                
+                # Process the response
+                if response.get('ResultsByTime') and len(response['ResultsByTime']) > 0:
+                    current_month_data = response['ResultsByTime'][0]
+                    groups = current_month_data.get('Groups', [])
+                    
+                    # Calculate total spend and find highest cost service
+                    total_spend = 0
+                    services = []
+                    highest_service = {"name": "No Data", "cost": 0}
+                    
+                    if groups:
+                        # Process grouped data (by service)
+                        print(f"Processing {len(groups)} service groups")
+                        for group in groups:
+                            service_name = group['Keys'][0]
+                            cost_amount = float(group['Metrics']['BlendedCost']['Amount'])
+                            
+                            print(f"Service: {service_name}, Cost: ${cost_amount}")
+                            
+                            # Include all services, even those with very small costs
+                            services.append({
+                                "name": service_name,
+                                "cost": cost_amount
+                            })
+                            total_spend += cost_amount
+                            
+                            # Track highest cost service (including very small amounts)
+                            if cost_amount > highest_service["cost"]:
+                                highest_service = {"name": service_name, "cost": cost_amount}
+                    else:
+                        # Process ungrouped data (total only)
+                        print("Processing ungrouped total cost data")
+                        total_cost = current_month_data.get('Total', {}).get('BlendedCost', {})
+                        if total_cost:
+                            total_spend = float(total_cost.get('Amount', 0))
+                            print(f"Total ungrouped cost: ${total_spend}")
+                            
+                            if total_spend > 0:
+                                # Since we don't have service breakdown, use a generic service
+                                highest_service = {"name": "AWS Services", "cost": total_spend}
+                                services = [{"name": "AWS Services", "cost": total_spend}]
+                    
+                    # If we found any data (even with very small amounts), use it
+                    if total_spend >= 0 and len(services) > 0:
+                        print(f"Found cost data: ${total_spend} with {len(services)} services for end date {end_date}")
+                        
+                        # Get forecast data for next month
+                        try:
+                            next_month = now.replace(month=now.month + 1) if now.month < 12 else now.replace(year=now.year + 1, month=1)
+                            forecast_response = ce.get_cost_forecast(
+                                TimePeriod={
+                                    'Start': end_date,
+                                    'End': next_month.strftime('%Y-%m-%d')
+                                },
+                                Metric='BLENDED_COST',
+                                Granularity='MONTHLY'
+                            )
+                            
+                            forecasted_bill = total_spend * 1.2  # Default 20% increase
+                            if forecast_response.get('ForecastResultsByTime'):
+                                try:
+                                    forecasted_bill = float(forecast_response['ForecastResultsByTime'][0]['MeanValue'])
+                                except (KeyError, ValueError, IndexError):
+                                    pass
+                        except Exception as forecast_error:
+                            print(f"Forecast failed, using default: {forecast_error}")
+                            forecasted_bill = total_spend * 1.2
+                        
+                        # Ensure we have a valid highest service even if costs are very small
+                        if highest_service["cost"] == 0 and len(services) > 0:
+                            # If all services have 0 cost, pick the first one
+                            highest_service = services[0]
+                        
+                        real_data = {
+                            "currentSpend": smart_round(total_spend),
+                            "forecastedBill": smart_round(forecasted_bill),
+                            "highestCostService": {
+                                "name": highest_service["name"],
+                                "cost": smart_round(highest_service["cost"])
+                            },
+                            "serviceBreakdown": [
+                                {
+                                    "name": service["name"],
+                                    "cost": smart_round(service["cost"])
+                                } for service in sorted(services, key=lambda x: x["cost"], reverse=True)[:10]  # Top 10 services
+                            ],
+                            "lastUpdated": datetime.utcnow().isoformat(),
+                            "dataSource": f"AWS Cost Explorer (end_date: {end_date})"
+                        }
+                        
+                        print(f"Real cost data retrieved: ${total_spend:.6f} total (rounded: ${smart_round(total_spend)}), {len(services)} services")
+                        return real_data
+                    else:
+                        print(f"No non-zero cost data found with end date {end_date}")
+                
+            except Exception as ce_error:
+                print(f"Cost Explorer failed for end date {end_date}: {ce_error}")
+                continue
+        
+        # Strategy 2: Try CloudWatch billing metrics (more immediate)
+        print("Trying CloudWatch billing data as fallback...")
         cloudwatch_cost = get_cloudwatch_billing_data()
         if cloudwatch_cost and cloudwatch_cost > 0:
             print(f"Using CloudWatch billing data: ${cloudwatch_cost}")
@@ -185,135 +325,72 @@ def get_real_cost_data():
                 "dataSource": "CloudWatch Billing"
             }
         
-        # Fallback to Cost Explorer
-        print("CloudWatch billing data not available, trying Cost Explorer...")
-        
-        # Get current month date range - Cost Explorer needs the full month range
-        now = datetime.now()
-        start_date = now.replace(day=1).strftime('%Y-%m-%d')
-        
-        # For end date, use tomorrow to ensure we get all data up to today
-        end_date = (now + timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        print(f"Fetching cost data from {start_date} to {end_date}")
-        
-        # First try: Get current month costs by service
-        response = ce.get_cost_and_usage(
-            TimePeriod={
-                'Start': start_date,
-                'End': end_date
-            },
-            Granularity='MONTHLY',
-            Metrics=['BlendedCost'],
-            GroupBy=[
-                {
-                    'Type': 'DIMENSION',
-                    'Key': 'SERVICE'
-                }
-            ]
-        )
-        
-        print(f"Cost Explorer response: {response}")
-        
-        # If no data, try without grouping by service
-        if not response.get('ResultsByTime') or not response['ResultsByTime'][0].get('Groups'):
-            print("No grouped data found, trying without service grouping...")
-            response = ce.get_cost_and_usage(
+        # Strategy 3: Try Cost Explorer with DAILY granularity for more recent data
+        print("Trying Cost Explorer with DAILY granularity...")
+        try:
+            daily_response = ce.get_cost_and_usage(
                 TimePeriod={
                     'Start': start_date,
-                    'End': end_date
+                    'End': (now + timedelta(days=1)).strftime('%Y-%m-%d')
                 },
-                Granularity='MONTHLY',
+                Granularity='DAILY',
                 Metrics=['BlendedCost']
             )
-            print(f"Ungrouped Cost Explorer response: {response}")
-        
-        # Process the response
-        if not response.get('ResultsByTime'):
-            print("No cost data available for current month")
-            return None
             
-        current_month_data = response['ResultsByTime'][0]
-        groups = current_month_data.get('Groups', [])
-        
-        # Calculate total spend and find highest cost service
-        total_spend = 0
-        services = []
-        highest_service = {"name": "No Data", "cost": 0}
-        
-        if groups:
-            # Process grouped data (by service)
-            print(f"Processing {len(groups)} service groups")
-            for group in groups:
-                service_name = group['Keys'][0]
-                cost_amount = float(group['Metrics']['BlendedCost']['Amount'])
+            print(f"Daily Cost Explorer response: {daily_response}")
+            
+            if daily_response.get('ResultsByTime'):
+                total_daily_spend = 0
+                for result in daily_response['ResultsByTime']:
+                    daily_cost = float(result['Total']['BlendedCost']['Amount'])
+                    total_daily_spend += daily_cost
+                    print(f"Daily cost for {result['TimePeriod']['Start']}: ${daily_cost}")
                 
-                print(f"Service: {service_name}, Cost: ${cost_amount}")
-                
-                if cost_amount > 0:
-                    services.append({
-                        "name": service_name,
-                        "cost": cost_amount
-                    })
-                    total_spend += cost_amount
-                    
-                    # Track highest cost service
-                    if cost_amount > highest_service["cost"]:
-                        highest_service = {"name": service_name, "cost": cost_amount}
-        else:
-            # Process ungrouped data (total only)
-            print("Processing ungrouped total cost data")
-            total_cost = current_month_data.get('Total', {}).get('BlendedCost', {})
-            if total_cost:
-                total_spend = float(total_cost.get('Amount', 0))
-                print(f"Total ungrouped cost: ${total_spend}")
-                
-                if total_spend > 0:
-                    # Since we don't have service breakdown, use a generic service
-                    highest_service = {"name": "AWS Services", "cost": total_spend}
-                    services = [{"name": "AWS Services", "cost": total_spend}]
+                if total_daily_spend > 0:
+                    print(f"Total daily spend: ${total_daily_spend}")
+                    return {
+                        "currentSpend": smart_round(total_daily_spend),
+                        "forecastedBill": smart_round(total_daily_spend * 1.2),
+                        "highestCostService": {
+                            "name": "AWS Services (Daily)",
+                            "cost": smart_round(total_daily_spend)
+                        },
+                        "serviceBreakdown": [
+                            {
+                                "name": "AWS Services",
+                                "cost": smart_round(total_daily_spend)
+                            }
+                        ],
+                        "lastUpdated": datetime.utcnow().isoformat(),
+                        "dataSource": "AWS Cost Explorer (Daily)"
+                    }
+        except Exception as daily_error:
+            print(f"Daily Cost Explorer failed: {daily_error}")
         
-        # Get forecast data for next month
-        forecast_response = ce.get_cost_forecast(
-            TimePeriod={
-                'Start': end_date,
-                'End': (now.replace(month=now.month + 1) if now.month < 12 else now.replace(year=now.year + 1, month=1)).strftime('%Y-%m-%d')
-            },
-            Metric='BLENDED_COST',
-            Granularity='MONTHLY'
-        )
+        # Strategy 4: Try AWS CLI as final fallback
+        print("Trying AWS CLI as final fallback...")
+        cli_cost = get_billing_via_cli()
+        if cli_cost and cli_cost > 0:
+            print(f"Using AWS CLI billing data: ${cli_cost}")
+            return {
+                "currentSpend": smart_round(cli_cost),
+                "forecastedBill": smart_round(cli_cost * 1.2),
+                "highestCostService": {
+                    "name": "AWS Services (CLI)",
+                    "cost": smart_round(cli_cost)
+                },
+                "serviceBreakdown": [
+                    {
+                        "name": "AWS Services",
+                        "cost": smart_round(cli_cost)
+                    }
+                ],
+                "lastUpdated": datetime.utcnow().isoformat(),
+                "dataSource": "AWS CLI"
+            }
         
-        forecasted_bill = total_spend * 1.2  # Default 20% increase
-        if forecast_response.get('ForecastResultsByTime'):
-            try:
-                forecasted_bill = float(forecast_response['ForecastResultsByTime'][0]['MeanValue'])
-            except (KeyError, ValueError, IndexError):
-                pass
-        
-        real_data = {
-            "currentSpend": smart_round(total_spend),
-            "forecastedBill": smart_round(forecasted_bill),
-            "highestCostService": {
-                "name": highest_service["name"],
-                "cost": smart_round(highest_service["cost"])
-            },
-            "serviceBreakdown": [
-                {
-                    "name": service["name"],
-                    "cost": smart_round(service["cost"])
-                } for service in sorted(services, key=lambda x: x["cost"], reverse=True)[:10]  # Top 10 services
-            ],
-            "lastUpdated": datetime.utcnow().isoformat()
-        }
-        
-        print(f"Real cost data retrieved: ${total_spend:.6f} total (rounded: ${smart_round(total_spend)}), {len(services)} services")
-        
-        # Ensure we have valid data before returning
-        if total_spend > 0:
-            return real_data
-        else:
-            print("No valid cost data found, returning None")
-            return None
+        print("No cost data available from any source")
+        return None
         
     except Exception as e:
         print(f"Error fetching real cost data: {str(e)}")
@@ -323,41 +400,102 @@ def get_real_cost_data():
         return None
 
 def get_cloudwatch_billing_data():
-    """Get billing data from CloudWatch metrics"""
+    """Get billing data from CloudWatch metrics with multiple strategies"""
     try:
-        # Get the latest billing metric from CloudWatch
+        # Try multiple time ranges to get the most recent data
         end_time = datetime.utcnow()
-        start_time = end_time - timedelta(days=1)  # Look back 1 day
+        time_ranges = [
+            (end_time - timedelta(days=1), end_time),  # Last 24 hours
+            (end_time - timedelta(days=7), end_time),  # Last 7 days
+            (end_time - timedelta(days=30), end_time)  # Last 30 days
+        ]
         
-        response = cloudwatch.get_metric_statistics(
-            Namespace='AWS/Billing',
-            MetricName='EstimatedCharges',
-            Dimensions=[
-                {
-                    'Name': 'Currency',
-                    'Value': 'USD'
-                }
-            ],
-            StartTime=start_time,
-            EndTime=end_time,
-            Period=86400,  # 1 day
-            Statistics=['Maximum']
-        )
+        for start_time, end_time_range in time_ranges:
+            try:
+                print(f"Trying CloudWatch billing for {start_time} to {end_time_range}")
+                
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/Billing',
+                    MetricName='EstimatedCharges',
+                    Dimensions=[
+                        {
+                            'Name': 'Currency',
+                            'Value': 'USD'
+                        }
+                    ],
+                    StartTime=start_time,
+                    EndTime=end_time_range,
+                    Period=86400,  # 1 day
+                    Statistics=['Maximum']
+                )
+                
+                print(f"CloudWatch billing response: {response}")
+                
+                if response.get('Datapoints'):
+                    # Get the most recent datapoint
+                    latest_datapoint = max(response['Datapoints'], key=lambda x: x['Timestamp'])
+                    billing_amount = latest_datapoint['Maximum']
+                    print(f"Latest CloudWatch billing amount: ${billing_amount}")
+                    
+                    if billing_amount > 0:
+                        return billing_amount
+                    else:
+                        print(f"CloudWatch returned $0 for time range {start_time} to {end_time_range}")
+                else:
+                    print(f"No CloudWatch billing datapoints found for {start_time} to {end_time_range}")
+                    
+            except Exception as range_error:
+                print(f"CloudWatch failed for time range {start_time} to {end_time_range}: {range_error}")
+                continue
         
-        print(f"CloudWatch billing response: {response}")
-        
-        if response.get('Datapoints'):
-            # Get the most recent datapoint
-            latest_datapoint = max(response['Datapoints'], key=lambda x: x['Timestamp'])
-            billing_amount = latest_datapoint['Maximum']
-            print(f"Latest CloudWatch billing amount: ${billing_amount}")
-            return billing_amount
-        else:
-            print("No CloudWatch billing datapoints found")
-            return None
+        print("No CloudWatch billing data found in any time range")
+        return None
             
     except Exception as e:
         print(f"Error getting CloudWatch billing data: {str(e)}")
+        return None
+
+def get_billing_via_cli():
+    """Get billing data using AWS CLI as final fallback"""
+    try:
+        # Get current month date range
+        now = datetime.now()
+        start_date = now.replace(day=1).strftime('%Y-%m-%d')
+        end_date = (now + timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        print(f"Trying AWS CLI for billing data from {start_date} to {end_date}")
+        
+        # Try to get cost data using AWS CLI
+        cmd = [
+            'aws', 'ce', 'get-cost-and-usage',
+            '--time-period', f'Start={start_date},End={end_date}',
+            '--granularity', 'MONTHLY',
+            '--metrics', 'BlendedCost',
+            '--output', 'json'
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            print(f"AWS CLI response: {data}")
+            
+            if data.get('ResultsByTime') and len(data['ResultsByTime']) > 0:
+                total_cost = float(data['ResultsByTime'][0]['Total']['BlendedCost']['Amount'])
+                print(f"AWS CLI total cost: ${total_cost}")
+                return total_cost
+            else:
+                print("No cost data in AWS CLI response")
+                return None
+        else:
+            print(f"AWS CLI failed: {result.stderr}")
+            return None
+            
+    except subprocess.TimeoutExpired:
+        print("AWS CLI command timed out")
+        return None
+    except Exception as e:
+        print(f"Error running AWS CLI: {str(e)}")
         return None
 
 def update_threshold(event, headers):
@@ -423,64 +561,108 @@ def update_threshold(event, headers):
         }
 
 def stop_ec2_instances(event, headers):
-    """Emergency stop all EC2 instances"""
+    """Emergency stop and terminate all EC2 instances"""
     try:
         body = json.loads(event.get("body", "{}"))
         region = body.get("region", "us-east-1")
         
-        # Get all running instances
+        # Get all running and stopped instances (to handle both cases)
         response = ec2.describe_instances(
             Filters=[
                 {
                     'Name': 'instance-state-name',
-                    'Values': ['running']
+                    'Values': ['running', 'stopped', 'stopping']
                 }
             ]
         )
         
-        instance_ids = []
+        running_instance_ids = []
+        stopped_instance_ids = []
+        
         for reservation in response['Reservations']:
             for instance in reservation['Instances']:
-                instance_ids.append(instance['InstanceId'])
+                instance_id = instance['InstanceId']
+                state = instance['State']['Name']
+                
+                if state == 'running':
+                    running_instance_ids.append(instance_id)
+                elif state in ['stopped', 'stopping']:
+                    stopped_instance_ids.append(instance_id)
         
-        if instance_ids:
-            # Stop all running instances
-            ec2.stop_instances(InstanceIds=instance_ids)
-            
-            # Log the emergency stop
-            table.put_item(Item={
-                "id": datetime.utcnow().isoformat(),
-                "message": f"Emergency stop: {len(instance_ids)} EC2 instances stopped",
+        actions_taken = []
+        total_instances = len(running_instance_ids) + len(stopped_instance_ids)
+        
+        # Stop running instances first
+        if running_instance_ids:
+            try:
+                stop_response = ec2.stop_instances(InstanceIds=running_instance_ids)
+                actions_taken.append(f"Stopped {len(running_instance_ids)} running instances")
+                print(f"Stopped instances: {running_instance_ids}")
+            except Exception as stop_error:
+                print(f"Error stopping instances: {stop_error}")
+                actions_taken.append(f"Failed to stop {len(running_instance_ids)} instances: {str(stop_error)}")
+        
+        # Terminate both running and stopped instances
+        all_instance_ids = running_instance_ids + stopped_instance_ids
+        if all_instance_ids:
+            try:
+                # Wait a moment for instances to stop if they were running
+                if running_instance_ids:
+                    import time
+                    time.sleep(2)
+                
+                terminate_response = ec2.terminate_instances(InstanceIds=all_instance_ids)
+                actions_taken.append(f"Terminated {len(all_instance_ids)} instances")
+                print(f"Terminated instances: {all_instance_ids}")
+            except Exception as terminate_error:
+                print(f"Error terminating instances: {terminate_error}")
+                actions_taken.append(f"Failed to terminate {len(all_instance_ids)} instances: {str(terminate_error)}")
+        
+        # Log the emergency action
+        log_message = f"Emergency action: {', '.join(actions_taken)}" if actions_taken else "No instances found to process"
+        
+        table.put_item(Item={
+            "id": datetime.utcnow().isoformat(),
+            "message": log_message,
+            "region": region,
+            "severity": "high",
+            "type": "emergency_stop",
+            "instance_ids": all_instance_ids,
+            "actions": actions_taken
+        })
+        
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({
+                "message": log_message,
+                "instanceIds": all_instance_ids,
                 "region": region,
-                "severity": "high",
-                "type": "emergency_stop",
-                "instance_ids": instance_ids
+                "actions": actions_taken,
+                "totalInstances": total_instances
             })
-            
-            return {
-                "statusCode": 200,
-                "headers": headers,
-                "body": json.dumps({
-                    "message": f"Emergency stop initiated for {len(instance_ids)} instances",
-                    "instanceIds": instance_ids,
-                    "region": region
-                })
-            }
-        else:
-            return {
-                "statusCode": 200,
-                "headers": headers,
-                "body": json.dumps({
-                    "message": "No running EC2 instances found",
-                    "instanceIds": [],
-                    "region": region
-                })
-            }
+        }
         
     except Exception as e:
-        print(f"Error stopping EC2 instances: {str(e)}")
+        print(f"Error processing EC2 instances: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        
+        # Log the error
+        table.put_item(Item={
+            "id": datetime.utcnow().isoformat(),
+            "message": f"Emergency stop failed: {str(e)}",
+            "region": region,
+            "severity": "high",
+            "type": "emergency_stop_error",
+            "error": str(e)
+        })
+        
         return {
             "statusCode": 500,
             "headers": headers,
-            "body": json.dumps({"error": "Failed to stop EC2 instances"})
+            "body": json.dumps({
+                "error": "Failed to process EC2 instances",
+                "details": str(e)
+            })
         }

@@ -35,7 +35,7 @@ output "api_handler_function_name" {
 # API Gateway
 output "api_gateway_url" {
   description = "URL of the API Gateway"
-  value       = "https://${aws_api_gateway_rest_api.cost_tracker_api.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}"
+  value       = "https://${aws_api_gateway_rest_api.cost_tracker_api.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_api_gateway_stage.cost_tracker_stage.stage_name}"
 }
 
 # S3 Bucket
@@ -77,23 +77,17 @@ output "deployment_instructions" {
   value = <<-EOT
     Deployment completed! Here's what you need to do next:
     
-    1. Update the frontend/index.html file:
-       - Replace 'https://vf8wpnzzgf.execute-api.us-east-1.amazonaws.com/dev' with: ${aws_api_gateway_deployment.cost_tracker_deployment.invoke_url}
-    
-    2. Re-upload the frontend to S3:
-       - Run: terraform apply (to update the S3 object)
-    
-    3. Test the system:
+    1. Test the system:
        - Visit the dashboard: https://${aws_cloudfront_distribution.dashboard_distribution.domain_name}
        - Manually invoke the cost logger Lambda function
        - Check DynamoDB for logged entries
     
-    4. For testing alerts:
+    2. For testing alerts:
        - Lower the cost_threshold in terraform.tfvars to $0.01
        - Run: terraform apply
        - The alarm should trigger quickly for testing
     
     Dashboard URL: https://${aws_cloudfront_distribution.dashboard_distribution.domain_name}
-    API URL: ${aws_api_gateway_deployment.cost_tracker_deployment.invoke_url}
+    API URL: https://${aws_api_gateway_rest_api.cost_tracker_api.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_api_gateway_stage.cost_tracker_stage.stage_name}
   EOT
 }

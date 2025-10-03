@@ -1,158 +1,179 @@
-# Cloud Cost Tracker & Alert System - Architecture
+# 🏗️ AWS Cost Tracker - Architecture Overview
 
-## System Architecture Diagram
+## System Architecture
 
-```mermaid
-graph TB
-    subgraph "AWS Cloud"
-        subgraph "Data Storage"
-            DDB[(DynamoDB<br/>Cost Logs Table)]
-        end
-        
-        subgraph "Compute"
-            L1[Lambda: Cost Logger<br/>Scheduled Function]
-            L2[Lambda: API Handler<br/>REST API Function]
-        end
-        
-        subgraph "Monitoring & Alerts"
-            CW[CloudWatch<br/>Billing Alarm]
-            SNS[SNS Topic<br/>Email Notifications]
-        end
-        
-        subgraph "Scheduling"
-            EB[EventBridge Rule<br/>6-hour Schedule]
-        end
-        
-        subgraph "API Layer"
-            APIGW[API Gateway<br/>REST Endpoint]
-        end
-        
-        subgraph "Frontend"
-            S3[S3 Bucket<br/>Static Website]
-            CF[CloudFront<br/>CDN Distribution]
-        end
-        
-        subgraph "AWS Services"
-            CE[Cost Explorer API]
-            BILLING[AWS Billing Metrics]
-        end
-    end
-    
-    subgraph "External"
-        USER[User/Admin]
-        EMAIL[Email Recipient]
-    end
-    
-    %% Data Flow
-    EB -->|Triggers| L1
-    L1 -->|Fetches Cost Data| CE
-    L1 -->|Stores Logs| DDB
-    BILLING -->|Monitors| CW
-    CW -->|Threshold Exceeded| SNS
-    SNS -->|Sends Alert| EMAIL
-    
-    %% API Flow
-    USER -->|Access Dashboard| CF
-    CF -->|Serves Static Files| S3
-    S3 -->|JavaScript API Calls| APIGW
-    APIGW -->|Invokes| L2
-    L2 -->|Queries Data| DDB
-    L2 -->|Returns JSON| APIGW
-    APIGW -->|API Response| S3
-    S3 -->|Renders Dashboard| CF
-    CF -->|Displays Data| USER
-    
-    %% Styling
-    classDef aws fill:#ff9900,stroke:#232f3e,stroke-width:2px,color:#fff
-    classDef compute fill:#ff6b6b,stroke:#c92a2a,stroke-width:2px,color:#fff
-    classDef storage fill:#4ecdc4,stroke:#26a69a,stroke-width:2px,color:#fff
-    classDef external fill:#95a5a6,stroke:#7f8c8d,stroke-width:2px,color:#fff
-    
-    class DDB,S3 storage
-    class L1,L2,APIGW compute
-    class CW,SNS,EB,CF,CE,BILLING aws
-    class USER,EMAIL external
+The AWS Cost Tracker is built using a **serverless, event-driven architecture** that provides real-time cost monitoring and management capabilities.
+
+### High-Level Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   API Gateway   │    │   Lambda        │
+│   (React SPA)   │◄──►│   (REST API)    │◄──►│   Functions     │
+│   CloudFront    │    │                 │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       ▼
+         │                       │              ┌─────────────────┐
+         │                       │              │   DynamoDB      │
+         │                       │              │   (Cost Logs)   │
+         │                       │              └─────────────────┘
+         │                       │                       │
+         │                       │                       ▼
+         │                       │              ┌─────────────────┐
+         │                       │              │   CloudWatch    │
+         │                       │              │   (Billing)     │
+         │                       │              └─────────────────┘
+         │                       │                       │
+         │                       │                       ▼
+         │                       │              ┌─────────────────┐
+         │                       │              │   SNS           │
+         │                       │              │   (Alerts)      │
+         │                       │              └─────────────────┘
+         │                       │
+         │                       ▼
+         │              ┌─────────────────┐
+         │              │   EventBridge   │
+         │              │   (Scheduler)   │
+         │              └─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│   S3 Bucket     │
+│   (Static Host) │
+└─────────────────┘
 ```
 
-## Component Descriptions
+## Core Components
 
-### Core Components
+### 1. Frontend Layer
+- **Technology**: React 18 with Tailwind CSS
+- **Hosting**: S3 + CloudFront CDN
+- **Features**: Responsive design, dark/light mode, real-time updates
 
-1. **DynamoDB Table** (`cost_logs`)
-   - Stores cost and usage logs with timestamp as primary key
-   - Pay-per-request billing mode for cost efficiency
-   - Contains monthly cost data, service breakdowns, and metadata
+### 2. API Gateway
+- **Purpose**: RESTful API endpoint management
+- **Endpoints**: 
+  - `/dashboard-data` - Get cost and alert data
+  - `/update-threshold` - Update billing threshold
+  - `/stop-ec2` - Emergency stop EC2 instances
 
-2. **Lambda Functions**
-   - **Cost Logger**: Scheduled function that fetches cost data from Cost Explorer API and stores it in DynamoDB
-   - **API Handler**: Handles REST API requests to retrieve cost data from DynamoDB
+### 3. Lambda Functions
 
-3. **EventBridge Rule**
-   - Triggers the cost logger Lambda function on a schedule (default: every 6 hours)
-   - Configurable via Terraform variables
+#### API Handler Lambda
+- **Purpose**: Main backend for dashboard operations
+- **Capabilities**:
+  - Fetch real-time cost data from CloudWatch/Cost Explorer
+  - Retrieve cost logs from DynamoDB
+  - Update CloudWatch billing alarms
+  - Control EC2 instances
 
-4. **CloudWatch Alarm**
-   - Monitors AWS billing metrics for cost threshold breaches
-   - Triggers SNS notifications when threshold is exceeded
+#### Cost Logger Lambda
+- **Purpose**: Automated cost monitoring and logging
+- **Triggers**: EventBridge schedule (every 6 hours), SNS notifications
+- **Capabilities**:
+  - Fetch current AWS costs
+  - Generate contextual log descriptions
+  - Store data in DynamoDB
+  - Send email alerts
 
-5. **SNS Topic & Subscription**
-   - Sends email notifications when cost thresholds are exceeded
-   - Configurable email endpoint
+### 4. Data Storage
 
-### API Layer
+#### DynamoDB Table
+- **Name**: `cost-tracker-cost-logs`
+- **Schema**:
+  - `id`: Timestamp (Primary Key)
+  - `message`: Event description
+  - `description`: Detailed context
+  - `region`: AWS region
+  - `severity`: low/medium/high
+  - `type`: Event type
+  - `timestamp`: ISO datetime
 
-6. **API Gateway**
-   - Provides RESTful API endpoint for cost data access
-   - Handles CORS for web dashboard integration
-   - Integrates with Lambda API handler
+#### S3 Bucket
+- **Purpose**: Static website hosting
+- **Contents**: React application files
+- **Access**: Public read for web content
 
-### Frontend
+### 5. Monitoring & Alerts
 
-7. **S3 Bucket**
-   - Hosts static HTML dashboard files
-   - Configured for website hosting with public read access
+#### CloudWatch
+- **Billing Metrics**: Real-time cost tracking
+- **Custom Alarms**: Threshold breach detection
+- **Logs**: Lambda execution logs
 
-8. **CloudFront Distribution**
-   - CDN for fast global access to the dashboard
-   - Handles HTTPS and custom error pages for SPA routing
+#### SNS
+- **Purpose**: Email alert distribution
+- **Triggers**: CloudWatch alarm state changes
+
+#### EventBridge
+- **Purpose**: Scheduled cost monitoring
+- **Schedule**: Every 6 hours (configurable)
 
 ## Data Flow
 
-### Cost Logging Flow
-1. EventBridge triggers cost logger Lambda every 6 hours
-2. Lambda calls AWS Cost Explorer API to fetch current month's cost data
-3. Cost data is processed and stored in DynamoDB with timestamp
-4. CloudWatch monitors billing metrics continuously
-5. When threshold exceeded, SNS sends email alert
+### 1. Real-Time Cost Monitoring
+1. User opens dashboard
+2. Frontend calls API Gateway
+3. API Handler Lambda fetches data from CloudWatch/Cost Explorer
+4. Data returned to frontend and displayed
 
-### Dashboard Access Flow
-1. User accesses CloudFront URL
-2. CloudFront serves static HTML from S3
-3. JavaScript in HTML makes API calls to API Gateway
-4. API Gateway invokes Lambda API handler
-5. Lambda queries DynamoDB for cost logs
-6. Data is returned and displayed in interactive dashboard
+### 2. Automated Cost Logging
+1. EventBridge triggers every 6 hours
+2. Cost Logger Lambda fetches current costs
+3. Generates contextual descriptions
+4. Stores log entry in DynamoDB
+5. Sends email alert if threshold exceeded
 
-## Security Considerations
+### 3. Threshold Updates
+1. User updates threshold in dashboard
+2. Frontend sends POST request to API Gateway
+3. API Handler Lambda updates CloudWatch alarm
+4. Logs threshold update in DynamoDB
 
-- IAM roles with least privilege access
-- S3 bucket policies for public read access to static content only
-- API Gateway with no authentication (can be enhanced with API keys or Cognito)
-- Lambda functions have minimal required permissions
-- CloudWatch alarms for monitoring and alerting
+## Security
 
-## Scalability Features
+### IAM Roles
+- **Lambda Execution Role**: Permissions for DynamoDB, CloudWatch, Cost Explorer, SNS, EC2
+- **API Gateway Permissions**: Invoke Lambda functions
 
-- DynamoDB auto-scaling with pay-per-request billing
-- Lambda functions scale automatically
-- CloudFront CDN for global distribution
-- S3 static hosting for high availability
-- EventBridge for reliable scheduling
+### Data Security
+- **Encryption at Rest**: DynamoDB and S3 use AES-256
+- **Encryption in Transit**: All API calls use TLS 1.2+
+- **Access Control**: IAM-based permissions
+
+## Scalability
+
+### Auto-Scaling
+- **Lambda**: Up to 1000 concurrent executions (3000 burst)
+- **DynamoDB**: On-demand scaling (5-40,000 RCU/WCU)
+- **API Gateway**: 10,000 requests/second per account
+
+### Performance Optimizations
+- **CloudFront CDN**: Global edge caching
+- **Lambda Caching**: In-memory result caching
+- **DynamoDB GSI**: Optimized query patterns
 
 ## Cost Optimization
 
-- DynamoDB on-demand billing
-- Lambda functions with appropriate timeouts
-- CloudFront caching to reduce origin requests
-- S3 standard storage class
-- EventBridge free tier usage
+### Resource Sizing
+- **API Handler**: 256 MB memory, 30s timeout
+- **Cost Logger**: 128 MB memory, 60s timeout
+- **DynamoDB**: On-demand billing mode
+
+### Monitoring
+- **Real-time Costs**: CloudWatch billing metrics
+- **Service Breakdown**: Cost by AWS service
+- **Forecasting**: Next month predictions
+- **Alerts**: Configurable spending thresholds
+
+## Key Benefits
+
+- ✅ **Zero Infrastructure Management**
+- ✅ **Automatic Scaling**
+- ✅ **Pay-per-Use Pricing**
+- ✅ **High Availability**
+- ✅ **Security by Default**
+- ✅ **Real-time Monitoring**
+- ✅ **Cost-Effective**
+- ✅ **Event-Driven Architecture**

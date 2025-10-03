@@ -195,7 +195,6 @@ resource "aws_api_gateway_deployment" "cost_tracker_deployment" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
-  stage_name  = var.environment
 
   lifecycle {
     create_before_destroy = true
@@ -203,6 +202,18 @@ resource "aws_api_gateway_deployment" "cost_tracker_deployment" {
   
   # Force redeployment by changing this timestamp
   triggers = {
-    redeployment = timestamp()
+    redeployment = "2025-10-03T11:05:00Z"
+  }
+}
+
+# API Gateway Stage
+resource "aws_api_gateway_stage" "cost_tracker_stage" {
+  deployment_id = aws_api_gateway_deployment.cost_tracker_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  stage_name    = var.environment
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-stage"
+    Environment = var.environment
   }
 }

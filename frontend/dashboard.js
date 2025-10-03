@@ -668,9 +668,28 @@ const Dashboard = () => {
             
             if (response.ok) {
                 const result = await response.json();
-                alert(`✅ Emergency stop completed in ${selectedRegion}: ${result.message || 'EC2 instances stopped'}`);
+                let message = `✅ Emergency action completed in ${selectedRegion}:\n\n`;
+                
+                if (result.actions && result.actions.length > 0) {
+                    message += result.actions.join('\n') + '\n\n';
+                }
+                
+                if (result.totalInstances > 0) {
+                    message += `Total instances processed: ${result.totalInstances}\n`;
+                    if (result.instanceIds && result.instanceIds.length > 0) {
+                        message += `Instance IDs: ${result.instanceIds.join(', ')}`;
+                    }
+                } else {
+                    message += 'No EC2 instances found to process.';
+                }
+                
+                alert(message);
+                
+                // Refresh the dashboard to show the new log entry
+                loadDashboardData();
             } else {
-                throw new Error('Emergency stop request failed');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Emergency stop request failed');
             }
         } catch (error) {
             console.error('Emergency stop failed:', error);
@@ -749,9 +768,9 @@ const Dashboard = () => {
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
                     <KPICard
-                        title={kpiData.isRealData ? "Current Month Spend" : "Estimated Current Spend"}
+                        title={kpiData.isRealData ? "Last Synced Cost (up to 24h delay)" : "Estimated Current Spend"}
                         value={formatCurrency(kpiData.currentSpend)}
-                        change={kpiData.isRealData ? "📊 Real AWS Data" : `📈 Based on ${kpiData.totalAlerts} alerts`}
+                        change={kpiData.isRealData ? "📊 Real AWS Data (may be delayed)" : `📈 Based on ${kpiData.totalAlerts} alerts`}
                         trend={kpiData.currentSpend > kpiData.threshold ? "up" : "down"}
                         icon="💰"
                         className={kpiData.currentSpend > kpiData.threshold ? "border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800" : ""}
@@ -887,6 +906,11 @@ const Dashboard = () => {
                     <p>DeeJhay's Tracker Dashboard - Real-time cost monitoring</p>
                     <p>Region: {selectedRegion} | Project: {projectName}</p>
                     <p>Data updates automatically based on your AWS cost alerts</p>
+                    {kpiData.isRealData && (
+                        <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
+                            ⚠️ Cost data may have up to 24-hour delay due to AWS billing processing
+                        </p>
+                    )}
                 </div>
             </div>
 
