@@ -10,11 +10,11 @@ resource "aws_cloudwatch_event_rule" "cost_logger_schedule" {
   }
 }
 
-# EventBridge target - SNS topic
-resource "aws_cloudwatch_event_target" "sns_target" {
+# EventBridge target - invoke Lambda directly
+resource "aws_cloudwatch_event_target" "lambda_target" {
   rule      = aws_cloudwatch_event_rule.cost_logger_schedule.name
-  target_id = "SNSTarget"
-  arn       = aws_sns_topic.cost_alerts.arn
+  target_id = "LambdaTarget"
+  arn       = aws_lambda_function.cost_logger.arn
 }
 
 # SNS topic policy for EventBridge
@@ -48,11 +48,11 @@ resource "aws_sns_topic_subscription" "lambda_subscription" {
   endpoint  = aws_lambda_function.cost_logger.arn
 }
 
-# Lambda permission for SNS
-resource "aws_lambda_permission" "allow_sns" {
-  statement_id  = "AllowExecutionFromSNS"
+# Lambda permission for EventBridge (CloudWatch Events)
+resource "aws_lambda_permission" "allow_events" {
+  statement_id  = "AllowExecutionFromEventBridge"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.cost_logger.function_name
-  principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.cost_alerts.arn
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.cost_logger_schedule.arn
 }

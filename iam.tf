@@ -84,6 +84,15 @@ resource "aws_iam_role_policy" "lambda_policy" {
         ]
         Resource = aws_sns_topic.cost_alerts.arn
       }
+      ,
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
+      }
     ]
   })
 }

@@ -21,6 +21,11 @@ variable "notification_email" {
   type        = string
 }
 
+variable "ses_sender_email" {
+  description = "Verified SES sender email address"
+  type        = string
+}
+
 variable "schedule_expression" {
   description = "EventBridge schedule for cost logging (cron or rate)"
   type        = string

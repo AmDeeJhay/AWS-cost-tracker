@@ -24,6 +24,8 @@ resource "aws_lambda_function" "cost_logger" {
   environment {
     variables = {
       DDB_TABLE = aws_dynamodb_table.cost_logs.name
+      SES_SENDER = var.ses_sender_email
+      SES_RECIPIENT = var.notification_email
     }
   }
 

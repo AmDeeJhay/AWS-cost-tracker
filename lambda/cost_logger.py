@@ -7,6 +7,7 @@ dynamodb = boto3.resource("dynamodb")
 ce = boto3.client("ce")
 table_name = os.environ.get("DDB_TABLE", "CostTrackerLogs")
 table = dynamodb.Table(table_name)
+ses = boto3.client("ses")
 
 def lambda_handler(event, context):
     print("Received event:", json.dumps(event))
@@ -95,7 +96,12 @@ def lambda_handler(event, context):
         table.put_item(Item=log_entry)
         
         print(f"Log stored successfully: {log_entry}")
-        return {"statusCode": 200, "body": "Enhanced log stored"}
+        # Send formatted email via SES
+        try:
+            send_formatted_email(subject, message, log_entry)
+        except Exception as email_err:
+            print(f"Email send failed: {email_err}")
+        return {"statusCode": 200, "body": "Enhanced log stored and email attempted"}
         
     except Exception as e:
         print(f"Error processing event: {str(e)}")
@@ -257,3 +263,52 @@ def get_current_costs():
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
         return None
+
+def send_formatted_email(subject, plain_message, log_entry):
+    sender = os.environ.get("SES_SENDER")
+    recipient = os.environ.get("SES_RECIPIENT")
+    if not sender or not recipient:
+        print("SES sender/recipient not configured; skipping email")
+        return
+    html_body = f"""
+    <html>
+      <body>
+        <h2 style='margin:0 0 12px 0;font-family:Arial'>AWS Cost Tracker - {subject}</h2>
+        <p style='font-family:Arial;margin:0 0 10px 0'>{plain_message}</p>
+        <hr/>
+        <h3 style='font-family:Arial'>Details</h3>
+        <ul style='font-family:Arial'>
+          <li><strong>Timestamp:</strong> {log_entry.get('timestamp')}</li>
+          <li><strong>Region:</strong> {log_entry.get('region')}</li>
+          <li><strong>Severity:</strong> {log_entry.get('severity')}</li>
+          <li><strong>Type:</strong> {log_entry.get('type')}</li>
+        </ul>
+        {format_cost_section(log_entry)}
+      </body>
+    </html>
+    """
+    ses.send_email(
+        Source=sender,
+        Destination={"ToAddresses": [recipient]},
+        Message={
+            "Subject": {"Data": f"AWS Cost Tracker - {subject}", "Charset": "UTF-8"},
+            "Body": {
+                "Text": {"Data": plain_message, "Charset": "UTF-8"},
+                "Html": {"Data": html_body, "Charset": "UTF-8"}
+            }
+        }
+    )
+
+def format_cost_section(log_entry):
+    current = log_entry.get('current_month_cost')
+    top = log_entry.get('top_services') or []
+    if current is None and not top:
+        return ""
+    items = ''.join([f"<li>{svc['name']}: ${float(svc['cost']):.2f}</li>" for svc in top])
+    return f"""
+    <h3 style='font-family:Arial'>Cost Summary</h3>
+    <p style='font-family:Arial'>Current Month Spend: <strong>${current if current is not None else 0:.2f}</strong></p>
+    <ul style='font-family:Arial'>
+      {items}
+    </ul>
+    """
