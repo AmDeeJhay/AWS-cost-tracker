@@ -440,7 +440,7 @@ const MonitoringTimer = () => {
     );
 };
 
-const EmergencyButton = ({ onEmergencyStop, selectedRegion }) => {
+const EmergencyButton = ({ onEmergencyStop, selectedRegion, clearAlerts, clearing, clearSelectedAlerts, clearingSelected, selectedAlerts, costLogs, toggleAlertSelection, selectAllAlerts, deselectAllAlerts }) => {
     const [showConfirm, setShowConfirm] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -468,6 +468,7 @@ const EmergencyButton = ({ onEmergencyStop, selectedRegion }) => {
                     <p className="text-sm text-red-600 dark:text-red-300 mb-3">
                         Region: {selectedRegion}
                     </p>
+                    {/* Emergency Stop Section */}
                     {!showConfirm ? (
                         <button
                             onClick={() => setShowConfirm(true)}
@@ -497,6 +498,75 @@ const EmergencyButton = ({ onEmergencyStop, selectedRegion }) => {
                             </div>
                         </div>
                     )}
+                    
+                    {/* Alert Management Section - Always Visible */}
+                    <div className="mt-6 pt-4 border-t border-red-200 dark:border-red-700 space-y-3">
+                        {/* Alert Count */}
+                        <div className="text-center">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                                Total Alerts: <strong className="text-red-600 dark:text-red-400">{costLogs.length}</strong>
+                                {selectedAlerts.size > 0 && (
+                                    <span className="ml-2 text-blue-600 dark:text-blue-400">
+                                        ({selectedAlerts.size} selected)
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                        
+                        {/* Selection Controls */}
+                        {costLogs.length > 0 && (
+                            <div className="flex gap-2 justify-center">
+                                <button
+                                    onClick={selectAllAlerts}
+                                    className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                                >
+                                    Select All
+                                </button>
+                                <button
+                                    onClick={deselectAllAlerts}
+                                    className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                                >
+                                    Deselect All
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Clear Selected Button */}
+                        {selectedAlerts.size > 0 && (
+                            <button
+                                onClick={clearSelectedAlerts}
+                                disabled={clearingSelected}
+                                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                            >
+                                {clearingSelected ? (
+                                    <span className="inline-flex items-center gap-2">
+                                        <Icon name="Loader2" className="w-4 h-4 animate-spin" /> Clearing Selected...
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-2">
+                                        <Icon name="Trash2" className="w-4 h-4" /> Clear Selected ({selectedAlerts.size})
+                                    </span>
+                                )}
+                            </button>
+                        )}
+                        
+                        {/* Clear All Button */}
+                        <button
+                            onClick={clearAlerts}
+                            disabled={clearing}
+                            className="w-full px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                        >
+                            {clearing ? (
+                                <span className="inline-flex items-center gap-2">
+                                    <Icon name="Loader2" className="w-4 h-4 animate-spin" /> Clearing All...
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-2">
+                                    <Icon name="Trash2" className="w-4 h-4" /> Clear All Alerts
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </CardContent>
         </Card>
@@ -596,6 +666,9 @@ const Dashboard = () => {
     const [lastUpdated, setLastUpdated] = useState(null);
     const [selectedLog, setSelectedLog] = useState(null);
     const [showLogModal, setShowLogModal] = useState(false);
+    const [clearing, setClearing] = useState(false);
+    const [selectedAlerts, setSelectedAlerts] = useState(new Set());
+    const [clearingSelected, setClearingSelected] = useState(false);
 
     const regions = [
         { value: 'us-east-1', label: '🇺🇸 US East (N. Virginia)' },
@@ -711,6 +784,91 @@ const Dashboard = () => {
             console.error('Emergency stop failed:', error);
             throw error;
         }
+    };
+
+    const clearAlerts = async () => {
+        if (!confirm('Are you sure you want to clear all alerts? This action cannot be undone.')) {
+            return;
+        }
+        
+        setClearing(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/clear-alerts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`Cleared ${result.cleared_count} alerts`);
+                // Refresh data after clearing
+                await loadCostData();
+                setSelectedAlerts(new Set());
+                alert(`Successfully cleared ${result.cleared_count} alerts`);
+            } else {
+                throw new Error('Failed to clear alerts');
+            }
+        } catch (error) {
+            console.error('Clear alerts failed:', error);
+            alert('Failed to clear alerts: ' + error.message);
+        } finally {
+            setClearing(false);
+        }
+    };
+
+    const clearSelectedAlerts = async () => {
+        if (selectedAlerts.size === 0) {
+            alert('Please select alerts to clear');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to clear ${selectedAlerts.size} selected alerts? This action cannot be undone.`)) {
+            return;
+        }
+        
+        setClearingSelected(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/clear-selected-alerts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alertIds: Array.from(selectedAlerts) })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`Cleared ${result.cleared_count} selected alerts`);
+                // Refresh data after clearing
+                await loadCostData();
+                setSelectedAlerts(new Set());
+                alert(`Successfully cleared ${result.cleared_count} selected alerts`);
+            } else {
+                throw new Error('Failed to clear selected alerts');
+            }
+        } catch (error) {
+            console.error('Clear selected alerts failed:', error);
+            alert('Failed to clear selected alerts: ' + error.message);
+        } finally {
+            setClearingSelected(false);
+        }
+    };
+
+    const toggleAlertSelection = (alertId) => {
+        const newSelected = new Set(selectedAlerts);
+        if (newSelected.has(alertId)) {
+            newSelected.delete(alertId);
+        } else {
+            newSelected.add(alertId);
+        }
+        setSelectedAlerts(newSelected);
+    };
+
+    const selectAllAlerts = () => {
+        setSelectedAlerts(new Set(costLogs.map(log => log.id)));
+    };
+
+    const deselectAllAlerts = () => {
+        setSelectedAlerts(new Set());
     };
 
     useEffect(() => {
@@ -872,14 +1030,24 @@ const Dashboard = () => {
                                         {costLogs.map((log, index) => (
                                             <div 
                                                 key={log.id || index} 
-                                                className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
-                                                onClick={() => {
-                                                    setSelectedLog(log);
-                                                    setShowLogModal(true);
-                                                }}
+                                                className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                                             >
                                                 <div className="flex items-start justify-between">
-                                                    <div className="flex-1">
+                                                    <div className="flex items-start gap-3 flex-1">
+                                                        {/* Checkbox */}
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedAlerts.has(log.id)}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleAlertSelection(log.id);
+                                                            }}
+                                                            className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                                        />
+                                                        <div className="flex-1 cursor-pointer" onClick={() => {
+                                                            setSelectedLog(log);
+                                                            setShowLogModal(true);
+                                                        }}>
                                                         <div className="flex items-center gap-2 mb-2">
                                                             <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getSeverityColor(log.severity)}`}>
                                                                 {log.severity?.toUpperCase() || 'UNKNOWN'}
@@ -891,8 +1059,9 @@ const Dashboard = () => {
                                                         <div className="text-gray-900 dark:text-gray-100 mb-2">
                                                             {log.message}
                                                         </div>
-                                        <div className="text-sm text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
-                                            <Icon name="Clock" className="w-4 h-4" /> {formatDate(log.timestamp || log.id)}
+                                                        <div className="text-sm text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                                                            <Icon name="Clock" className="w-4 h-4" /> {formatDate(log.timestamp || log.id)}
+                                                        </div>
                                                         </div>
                                                     </div>
                                                     <div className="ml-4 text-gray-400 dark:text-gray-500">
@@ -912,6 +1081,15 @@ const Dashboard = () => {
                         <EmergencyButton 
                             onEmergencyStop={handleEmergencyStop}
                             selectedRegion={selectedRegion}
+                            clearAlerts={clearAlerts}
+                            clearing={clearing}
+                            clearSelectedAlerts={clearSelectedAlerts}
+                            clearingSelected={clearingSelected}
+                            selectedAlerts={selectedAlerts}
+                            costLogs={costLogs}
+                            toggleAlertSelection={toggleAlertSelection}
+                            selectAllAlerts={selectAllAlerts}
+                            deselectAllAlerts={deselectAllAlerts}
                         />
                         <MonitoringTimer />
                     </div>

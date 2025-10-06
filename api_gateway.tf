@@ -213,6 +213,92 @@ resource "aws_api_gateway_integration" "metrics_options_integration" {
   uri                     = aws_lambda_function.api_handler.invoke_arn
 }
 
+# Clear alerts resource
+resource "aws_api_gateway_resource" "clear_alerts" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  parent_id   = aws_api_gateway_rest_api.cost_tracker_api.root_resource_id
+  path_part   = "clear-alerts"
+}
+
+# Clear selected alerts resource
+resource "aws_api_gateway_resource" "clear_selected_alerts" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  parent_id   = aws_api_gateway_rest_api.cost_tracker_api.root_resource_id
+  path_part   = "clear-selected-alerts"
+}
+
+# Clear alerts methods
+resource "aws_api_gateway_method" "clear_alerts_post" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.clear_alerts.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_method" "clear_alerts_options" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.clear_alerts.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+# Clear alerts integrations
+resource "aws_api_gateway_integration" "clear_alerts_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.clear_alerts.id
+  http_method = aws_api_gateway_method.clear_alerts_post.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
+resource "aws_api_gateway_integration" "clear_alerts_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.clear_alerts.id
+  http_method = aws_api_gateway_method.clear_alerts_options.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
+# Clear selected alerts methods
+resource "aws_api_gateway_method" "clear_selected_alerts_post" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.clear_selected_alerts.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_method" "clear_selected_alerts_options" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.clear_selected_alerts.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+# Clear selected alerts integrations
+resource "aws_api_gateway_integration" "clear_selected_alerts_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.clear_selected_alerts.id
+  http_method = aws_api_gateway_method.clear_selected_alerts_post.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
+resource "aws_api_gateway_integration" "clear_selected_alerts_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.clear_selected_alerts.id
+  http_method = aws_api_gateway_method.clear_selected_alerts_options.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
 # Lambda permission for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowExecutionFromAPIGateway"
@@ -235,6 +321,10 @@ resource "aws_api_gateway_deployment" "cost_tracker_deployment" {
     aws_api_gateway_integration.stop_ec2_options_integration,
     aws_api_gateway_integration.metrics_integration,
     aws_api_gateway_integration.metrics_options_integration,
+    aws_api_gateway_integration.clear_alerts_integration,
+    aws_api_gateway_integration.clear_alerts_options_integration,
+    aws_api_gateway_integration.clear_selected_alerts_integration,
+    aws_api_gateway_integration.clear_selected_alerts_options_integration,
   ]
 
   rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id

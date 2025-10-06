@@ -54,6 +54,10 @@ def lambda_handler(event, context):
             return update_threshold(event, headers)
         elif path == "/stop-ec2" and http_method == "POST":
             return stop_ec2_instances(event, headers)
+        elif path == "/clear-alerts" and http_method == "POST":
+            return clear_alerts(event, headers)
+        elif path == "/clear-selected-alerts" and http_method == "POST":
+            return clear_selected_alerts(event, headers)
         else:
             return {
                 "statusCode": 404,
@@ -686,6 +690,121 @@ def stop_ec2_instances(event, headers):
             "headers": headers,
             "body": json.dumps({
                 "error": "Failed to process EC2 instances",
+                "details": str(e)
+            })
+        }
+
+def clear_alerts(event, headers):
+    """Clear all alerts from DynamoDB"""
+    try:
+        table_name = os.environ.get("DDB_TABLE", "CostTrackerLogs")
+        table = dynamodb.Table(table_name)
+        
+        # Scan and delete all items
+        response = table.scan()
+        items = response.get('Items', [])
+        
+        deleted_count = 0
+        for item in items:
+            table.delete_item(Key={'id': item['id']})
+            deleted_count += 1
+        
+        # Log the clear action
+        timestamp = datetime.utcnow().isoformat()
+        table.put_item(Item={
+            "id": timestamp,
+            "message": f"Cleared {deleted_count} alerts from dashboard",
+            "description": f"User manually cleared all {deleted_count} alert entries from the cost tracker dashboard",
+            "subject": "Alerts Cleared",
+            "region": "us-east-1",
+            "severity": "low",
+            "type": "manual_clear",
+            "timestamp": timestamp,
+            "cleared_count": deleted_count
+        })
+        
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({
+                "message": f"Successfully cleared {deleted_count} alerts",
+                "cleared_count": deleted_count
+            })
+        }
+        
+    except Exception as e:
+        print(f"Error clearing alerts: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({
+                "error": "Failed to clear alerts",
+                "details": str(e)
+            })
+        }
+
+def clear_selected_alerts(event, headers):
+    """Clear selected alerts from DynamoDB"""
+    try:
+        table_name = os.environ.get("DDB_TABLE", "CostTrackerLogs")
+        table = dynamodb.Table(table_name)
+        
+        # Parse request body
+        body = json.loads(event.get('body', '{}'))
+        alert_ids = body.get('alertIds', [])
+        
+        if not alert_ids:
+            return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({
+                    "error": "No alert IDs provided",
+                    "cleared_count": 0
+                })
+            }
+        
+        # Delete selected items
+        deleted_count = 0
+        for alert_id in alert_ids:
+            try:
+                table.delete_item(Key={'id': alert_id})
+                deleted_count += 1
+            except Exception as e:
+                print(f"Failed to delete alert {alert_id}: {str(e)}")
+                continue
+        
+        # Log the clear action
+        timestamp = datetime.utcnow().isoformat()
+        table.put_item(Item={
+            "id": timestamp,
+            "message": f"Cleared {deleted_count} selected alerts from dashboard",
+            "description": f"User manually cleared {deleted_count} selected alert entries from the cost tracker dashboard",
+            "subject": "Selected Alerts Cleared",
+            "region": "us-east-1",
+            "severity": "low",
+            "type": "manual_clear_selected",
+            "timestamp": timestamp,
+            "cleared_count": deleted_count,
+            "selected_alert_ids": alert_ids
+        })
+        
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({
+                "message": f"Successfully cleared {deleted_count} selected alerts",
+                "cleared_count": deleted_count,
+                "requested_count": len(alert_ids)
+            })
+        }
+        
+    except Exception as e:
+        print(f"Error clearing selected alerts: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({
+                "error": "Failed to clear selected alerts",
                 "details": str(e)
             })
         }
