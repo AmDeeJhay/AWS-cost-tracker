@@ -48,6 +48,8 @@ def lambda_handler(event, context):
             return get_cost_logs(headers, query_params)
         elif path == "/dashboard-data":
             return get_dashboard_data(headers, query_params)
+        elif path == "/metrics":
+            return get_metrics(headers)
         elif path == "/update-threshold" and http_method == "POST":
             return update_threshold(event, headers)
         elif path == "/stop-ec2" and http_method == "POST":
@@ -398,6 +400,27 @@ def get_real_cost_data():
         print(f"Full traceback: {traceback.format_exc()}")
         # Return None so dashboard falls back to estimates
         return None
+
+def get_metrics(headers):
+    """Simple health/metrics endpoint for uptime checks."""
+    try:
+        runtime_info = {
+            "service": "cost-tracker-api",
+            "status": "ok",
+            "time": datetime.utcnow().isoformat(),
+        }
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps(runtime_info)
+        }
+    except Exception as e:
+        print(f"Error in metrics: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": "Failed to get metrics"})
+        }
 
 def get_cloudwatch_billing_data():
     """Get billing data from CloudWatch metrics with multiple strategies"""

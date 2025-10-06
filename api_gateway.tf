@@ -172,6 +172,47 @@ resource "aws_api_gateway_integration" "stop_ec2_options_integration" {
   uri                     = aws_lambda_function.api_handler.invoke_arn
 }
 
+# Metrics Resource
+resource "aws_api_gateway_resource" "metrics" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  parent_id   = aws_api_gateway_rest_api.cost_tracker_api.root_resource_id
+  path_part   = "metrics"
+}
+
+resource "aws_api_gateway_method" "metrics_get" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.metrics.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_method" "metrics_options" {
+  rest_api_id   = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id   = aws_api_gateway_resource.metrics.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "metrics_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.metrics.id
+  http_method = aws_api_gateway_method.metrics_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
+resource "aws_api_gateway_integration" "metrics_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
+  resource_id = aws_api_gateway_resource.metrics.id
+  http_method = aws_api_gateway_method.metrics_options.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.api_handler.invoke_arn
+}
+
 # Lambda permission for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowExecutionFromAPIGateway"
@@ -192,6 +233,8 @@ resource "aws_api_gateway_deployment" "cost_tracker_deployment" {
     aws_api_gateway_integration.update_threshold_options_integration,
     aws_api_gateway_integration.stop_ec2_integration,
     aws_api_gateway_integration.stop_ec2_options_integration,
+    aws_api_gateway_integration.metrics_integration,
+    aws_api_gateway_integration.metrics_options_integration,
   ]
 
   rest_api_id = aws_api_gateway_rest_api.cost_tracker_api.id
@@ -202,7 +245,7 @@ resource "aws_api_gateway_deployment" "cost_tracker_deployment" {
   
   # Force redeployment by changing this timestamp
   triggers = {
-    redeployment = "2025-10-03T11:05:00Z"
+    redeployment = "2025-10-06T16:10:00Z"
   }
 }
 
