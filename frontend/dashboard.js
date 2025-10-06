@@ -136,6 +136,22 @@ const calculateKPIsFromLogs = (logs, threshold, realCostData = null) => {
     };
 };
 
+// Lucide Icon helper: emit data-lucide with kebab-case and init after render
+const toKebab = (value) => (value || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/_/g, '-')
+    .toLowerCase();
+
+const Icon = ({ name, className = "w-6 h-6" }) => {
+    const iconName = toKebab(name || 'circle');
+    React.useEffect(() => {
+        if (window.lucide) {
+            try { window.lucide.createIcons(); } catch (_) {}
+        }
+    }, [iconName, className]);
+    return <i data-lucide={iconName} className={className}></i>;
+};
+
 // Components
 const Card = ({ children, className = "" }) => (
     <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 ${className}`}>
@@ -184,7 +200,7 @@ const ThemeToggle = ({ theme, toggleTheme }) => (
         className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
     >
-        {theme === 'light' ? '🌙' : '☀️'}
+        {theme === 'light' ? <Icon name="Moon" /> : <Icon name="Sun" />}
     </button>
 );
 
@@ -196,27 +212,27 @@ const LogDetailModal = ({ log, isOpen, onClose }) => {
         
         const typeConfig = {
             cost_alert: {
-                icon: '🚨',
+                icon: '',
                 title: 'Cost Alert',
                 actions: ['Threshold breach detected', 'Email notification sent', 'Dashboard updated', 'Alert logged to DynamoDB']
             },
             scheduled_check: {
-                icon: '⏰',
+                icon: '',
                 title: 'Scheduled Check',
                 actions: ['Cost data fetched', 'Service usage analyzed', 'Dashboard updated', 'Logged to DynamoDB']
             },
             threshold_update: {
-                icon: '⚙️',
+                icon: '',
                 title: 'Threshold Update',
                 actions: ['CloudWatch alarm updated', 'New threshold applied', 'Settings saved', 'Dashboard refreshed']
             },
             error: {
-                icon: '❌',
+                icon: '',
                 title: 'System Error',
                 actions: ['Error logged', 'System continued monitoring', 'Admin notification sent', 'Fallback procedures activated']
             },
             manual_check: {
-                icon: '🔍',
+                icon: '',
                 title: 'Manual Check',
                 actions: ['Cost data fetched', 'Current spend calculated', 'Dashboard refreshed', 'System status verified']
             }
@@ -403,7 +419,7 @@ const MonitoringTimer = () => {
         <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
             <CardContent>
                 <div className="text-center">
-                    <div className="text-3xl mb-2">⏰</div>
+                    <div className="text-3xl mb-2"><Icon name="AlarmClock" /></div>
                     <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-2">
                         Next Monitoring Check
                     </h3>
@@ -445,7 +461,7 @@ const EmergencyButton = ({ onEmergencyStop, selectedRegion }) => {
         <Card className="border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800">
             <CardContent>
                 <div className="text-center">
-                    <div className="text-4xl mb-2">🚨</div>
+                        <div className="text-4xl mb-2"><Icon name="Siren" /></div>
                     <h3 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">
                         Emergency Controls
                     </h3>
@@ -470,13 +486,13 @@ const EmergencyButton = ({ onEmergencyStop, selectedRegion }) => {
                                     disabled={isLoading}
                                     className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
                                 >
-                                    {isLoading ? '⏳ Stopping...' : '✅ Confirm'}
+                                    {isLoading ? (<span className="inline-flex items-center gap-2"><Icon name="Loader2" className="w-4 h-4 animate-spin" /> Stopping...</span>) : (<span className="inline-flex items-center gap-2"><Icon name="Check" className="w-4 h-4" /> Confirm</span>)}
                                 </button>
                                 <button
                                     onClick={() => setShowConfirm(false)}
                                     className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
                                 >
-                                    ❌ Cancel
+                                    <span className="inline-flex items-center gap-2"><Icon name="X" className="w-4 h-4" /> Cancel</span>
                                 </button>
                             </div>
                         </div>
@@ -513,12 +529,12 @@ const SettingsPanel = ({ threshold, onThresholdUpdate, onClose }) => {
         <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
             <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                    ⚙️ Settings
+                    <span className="inline-flex items-center gap-2"><Icon name="Settings" /> Settings</span>
                     <button
                         onClick={onClose}
                         className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                     >
-                        ✕
+                        <Icon name="X" />
                     </button>
                 </CardTitle>
             </CardHeader>
@@ -547,7 +563,7 @@ const SettingsPanel = ({ threshold, onThresholdUpdate, onClose }) => {
                             disabled={isLoading}
                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                         >
-                            {isLoading ? '⏳ Saving...' : '💾 Save Threshold'}
+                            {isLoading ? (<span className="inline-flex items-center gap-2"><Icon name="Loader2" className="w-4 h-4 animate-spin" /> Saving...</span>) : (<span className="inline-flex items-center gap-2"><Icon name="Save" className="w-4 h-4" /> Save Threshold</span>)}
                         </button>
                         <button
                             onClick={onClose}
@@ -717,7 +733,7 @@ const Dashboard = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4">
                     <div>
                     <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
-                        🏦 DeeJhay's Cost Tracker Dashboard
+                        <span className="inline-flex items-center gap-2"><Icon name="Banknote" /> DeeJhay's Cost Tracker Dashboard</span>
                     </h1>
                         {lastUpdated && (
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -748,7 +764,7 @@ const Dashboard = () => {
                             disabled={isLoading}
                             className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors text-sm sm:text-base"
                         >
-                            {isLoading ? '🔄 Loading...' : '🔄 Refresh'}
+                            {isLoading ? (<span className="inline-flex items-center gap-2"><Icon name="Loader2" className="w-4 h-4 animate-spin" /> Loading...</span>) : (<span className="inline-flex items-center gap-2"><Icon name="RefreshCcw" className="w-4 h-4" /> Refresh</span>)}
                         </button>
                         <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
                     </div>
@@ -770,31 +786,31 @@ const Dashboard = () => {
                     <KPICard
                         title={kpiData.isRealData ? "Last Synced Cost (up to 24h delay)" : "Estimated Current Spend"}
                         value={formatCurrency(kpiData.currentSpend)}
-                        change={kpiData.isRealData ? "📊 Real AWS Data (may be delayed)" : `📈 Based on ${kpiData.totalAlerts} alerts`}
+                        change={kpiData.isRealData ? "Real AWS Data (may be delayed)" : `Based on ${kpiData.totalAlerts} alerts`}
                         trend={kpiData.currentSpend > kpiData.threshold ? "up" : "down"}
-                        icon="💰"
+                        icon={<Icon name="DollarSign" className="w-8 h-8" />}
                         className={kpiData.currentSpend > kpiData.threshold ? "border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800" : ""}
                     />
                     <KPICard
                         title="Forecasted Bill"
                         value={formatCurrency(kpiData.forecastedBill)}
-                        change={`+20% projection`}
+                        change={"+20% projection"}
                         trend="up"
-                        icon="📈"
+                        icon={<Icon name="TrendingUp" className="w-8 h-8" />}
                     />
                     <KPICard
                         title="Highest Cost Service"
                         value={formatCurrency(kpiData.highestCostService.cost)}
                         change={kpiData.highestCostService.name}
                         trend="neutral"
-                        icon="🏆"
+                        icon={<Icon name="Trophy" className="w-8 h-8" />}
                     />
                     <KPICard
                         title="Alert Threshold"
                         value={formatCurrency(kpiData.threshold)}
-                        change={kpiData.currentSpend > kpiData.threshold ? "⚠️ Exceeded" : "✅ Safe"}
+                        change={kpiData.currentSpend > kpiData.threshold ? "Exceeded" : "Safe"}
                         trend={kpiData.currentSpend > kpiData.threshold ? "up" : "down"}
-                        icon="🎯"
+                        icon={<Icon name="Target" className="w-8 h-8" />}
                         className={kpiData.currentSpend > kpiData.threshold ? "border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800" : ""}
                     />
                 </div>
@@ -804,7 +820,7 @@ const Dashboard = () => {
                     <Card>
                         <CardContent>
                             <div className="text-center">
-                                <div className="text-3xl mb-2">📊</div>
+                        <div className="text-3xl mb-2"><Icon name="BarChart3" /></div>
                                 <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{kpiData.totalAlerts}</div>
                                 <div className="text-sm text-gray-500 dark:text-gray-400">Total Alerts</div>
                             </div>
@@ -813,7 +829,7 @@ const Dashboard = () => {
                     <Card>
                         <CardContent>
                             <div className="text-center">
-                                <div className="text-3xl mb-2">🚨</div>
+                                <div className="text-3xl mb-2"><Icon name="AlertTriangle" className="text-red-600" /></div>
                                 <div className="text-2xl font-bold text-red-600 dark:text-red-400">{kpiData.highPriorityAlerts}</div>
                                 <div className="text-sm text-gray-500 dark:text-gray-400">High Priority</div>
                             </div>
@@ -822,7 +838,7 @@ const Dashboard = () => {
                     <Card>
                         <CardContent>
                             <div className="text-center">
-                                <div className="text-3xl mb-2">🌍</div>
+                                <div className="text-3xl mb-2"><Icon name="Globe2" className="text-blue-600" /></div>
                                 <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{selectedRegion}</div>
                                 <div className="text-sm text-gray-500 dark:text-gray-400">Active Region</div>
                             </div>
@@ -868,15 +884,15 @@ const Dashboard = () => {
                                                             <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getSeverityColor(log.severity)}`}>
                                                                 {log.severity?.toUpperCase() || 'UNKNOWN'}
                                                             </span>
-                                                            <span className="text-sm text-gray-500 dark:text-gray-400">
-                                                                📍 {log.region}
+                                        <span className="text-sm text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                                            <Icon name="MapPin" className="w-4 h-4" /> {log.region}
                                                             </span>
                                                         </div>
                                                         <div className="text-gray-900 dark:text-gray-100 mb-2">
                                                             {log.message}
                                                         </div>
-                                                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                            🕒 {formatDate(log.timestamp || log.id)}
+                                        <div className="text-sm text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                                            <Icon name="Clock" className="w-4 h-4" /> {formatDate(log.timestamp || log.id)}
                                                         </div>
                                                     </div>
                                                     <div className="ml-4 text-gray-400 dark:text-gray-500">
